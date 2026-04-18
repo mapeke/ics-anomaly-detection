@@ -1,0 +1,23 @@
+name: baseline_hai_dense_ae
+data:
+  dataset: hai
+  window: null
+  val_frac: 0.15
+  seed: 42
+  subsample_train: 150000
+model:
+  name: dense_ae
+  params:
+    hidden: [128, 64, 32, 64, 128]
+train:
+  epochs: 25
+  batch_size: 512
+  learning_rate: 0.001
+  device: cpu
+eval:
+  threshold_method: val_percentile
+  val_percentile: 99.0
+  metrics: [pointwise, point_adjust, etapr]
+seeds: [42]
+notes: |
+  HAI Dense AE baseline. Subsample to 150k rows for CPU tractability.

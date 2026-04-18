@@ -1,0 +1,20 @@
+name: baseline_morris_isolation_forest
+data:
+  dataset: morris
+  window: null
+  val_frac: 0.15
+  seed: 42
+model:
+  name: isolation_forest
+  params:
+    n_estimators: 200
+    random_state: 42
+train:
+  device: cpu
+eval:
+  threshold_method: val_percentile
+  val_percentile: 99.0
+  metrics: [pointwise, point_adjust, etapr]
+seeds: [42, 7, 123]
+notes: |
+  Morris classical baseline. 3 seeds for a small variance estimate.

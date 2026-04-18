@@ -20,15 +20,17 @@ for d in (PROCESSED_DIR, FIGURES_DIR, METRICS_DIR):
 
 
 def set_seed(seed: int = 42) -> None:
-    """Seed Python, NumPy, and TensorFlow (if importable) for reproducibility."""
+    """Seed Python, NumPy, and PyTorch (if installed) for reproducibility."""
     os.environ["PYTHONHASHSEED"] = str(seed)
     random.seed(seed)
     np.random.seed(seed)
     try:
-        from tensorflow.random import set_seed as tf_set_seed
+        import torch
 
-        tf_set_seed(seed)
-    except (ImportError, AttributeError):
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+    except ImportError:
         pass
 
 
