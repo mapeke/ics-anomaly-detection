@@ -26,6 +26,9 @@ env/
 *.keras
 *.pkl
 *.joblib
+*.pt
+*.pth
+results/checkpoints/
 models/checkpoints/
 
 # OS / IDE / Assistants
