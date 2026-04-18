@@ -1,0 +1,2 @@
+model,dataset,precision,recall,f1,roc_auc,pr_auc,threshold
+LSTM_AE,morris,1.0,0.9993827853215127,0.9996912973928662,,,0.04864083603024483
