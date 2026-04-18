@@ -1,0 +1,14 @@
+numpy>=1.26,<2.2
+pandas>=2.1
+scipy>=1.11
+scikit-learn>=1.4
+tensorflow>=2.15,<2.18
+matplotlib>=3.8
+seaborn>=0.13
+jupyter>=1.0
+jupyterlab>=4.0
+notebook>=7.0
+tqdm>=4.66
+pyarrow>=15.0
+requests>=2.31
+liac-arff>=2.5

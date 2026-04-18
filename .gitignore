@@ -1,0 +1,44 @@
+# Raw datasets (large; obtain via instructions in data/README.md)
+data/raw/
+data/processed/*.parquet
+data/processed/*.feather
+!data/processed/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+.jupyter/
+
+# Model artifacts
+*.h5
+*.keras
+*.pkl
+*.joblib
+models/checkpoints/
+
+# OS / IDE / Assistants
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.claude/
+*.swp
+
+# Build / test
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
