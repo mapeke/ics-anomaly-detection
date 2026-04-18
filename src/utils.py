@@ -25,10 +25,10 @@ def set_seed(seed: int = 42) -> None:
     random.seed(seed)
     np.random.seed(seed)
     try:
-        import tensorflow as tf
+        from tensorflow.random import set_seed as tf_set_seed
 
-        tf.random.set_seed(seed)
-    except ImportError:
+        tf_set_seed(seed)
+    except (ImportError, AttributeError):
         pass
 
 
