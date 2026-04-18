@@ -2,88 +2,74 @@
 
 ## Context
 
-This is an undergraduate diploma project titled **"Industrial Control System Anomaly Detection for Cyber-Physical Security."** The goal is to evaluate multiple machine learning models on two real-world ICS datasets and present the findings in a reproducible Jupyter notebook workflow suitable for a thesis defense.
+Undergraduate diploma thesis, workshop-paper target, 4+ months from April 2026. Full plan and design rules are in [`CLAUDE.md`](CLAUDE.md); this document tracks the current state and upcoming work.
 
-## Datasets (2)
+## Three thesis contributions
 
-1. **HAI 21.03** — HIL-based Augmented ICS Security Dataset (ETRI).
-   - Source: https://github.com/icsdataset/hai
-   - Characteristics: multivariate time series from boiler, turbine, water-treatment, and HIL simulator processes; labeled attack windows across three sub-processes (`attack_P1/P2/P3`).
-   - License: CC BY 4.0 (public).
-   - Note: defaulting to 21.03 because 22.04/23.05 require Git LFS and the upstream LFS budget is exhausted. 21.03 is the version most widely cited in academic literature.
-2. **Morris Gas Pipeline Dataset** — Mississippi State University.
-   - Source: https://sites.google.com/a/uah.edu/tommy-morris-uah/ics-data-sets
-   - Characteristics: Modbus RTU telemetry from a gas pipeline testbed; labeled command-injection, response-injection, and reconnaissance attacks.
-   - License: public research use.
+1. **Cross-dataset generalization** — train on HAI, test on Morris (and vice versa), plus within-HAI leave-one-process-out.
+2. **Time-aware evaluation** — every number reported under point-wise, point-adjust (Xu 2018 + Kim 2022 critique), and eTaPR (Hwang 2022). Ranking changes are a finding.
+3. **Per-sensor attribution** — reconstruction-error for AE family, attention rollout for transformers, precision@k against HAI attack-target labels.
 
-## Models (4)
+## Datasets
 
-| # | Model | Type | Notes |
+| Dataset | Version | Status |
+|---|---|---|
+| HAI | 21.03 | ✅ cloned, 79 features, per-process attack flags |
+| Morris Gas Pipeline | `IanArffDataset.arff` | ✅ downloaded, 16 features after leak-column removal |
+
+`data/raw/` is gitignored; retrieval instructions in [`data/README.md`](data/README.md).
+
+## Phase status
+
+| Phase | Weeks | Goal | State |
 |---|---|---|---|
-| 1 | Isolation Forest | Classical unsupervised | Tree-based, fast, strong tabular baseline |
-| 2 | One-Class SVM | Classical unsupervised | RBF kernel, boundary around normal data |
-| 3 | Autoencoder (Dense) | Deep unsupervised | Reconstruction error as anomaly score |
-| 4 | LSTM Autoencoder | Deep unsupervised, temporal | Sequence reconstruction — suited to ICS time series |
+| 1 | 1–4 | End-to-end pipeline, 4 baselines, 3 metrics, tests | ✅ **Complete** |
+| 2 | 5–8 | TranAD, USAD; reproduce HAI numbers within ±0.05 F1 | Not started |
+| 3 | 9–12 | HAI↔Morris transfer study + within-HAI LOPO | Not started |
+| 4 | 13–16 | Attribution, thesis writing, defense | Not started |
 
-## Repo Structure
+## Phase 1 deliverables (complete)
 
-```
-ics-anomaly-detection/
-├── CLAUDE.md                     # assistant memory / project context
-├── PROJECT_PLAN.md               # this file
-├── README.md
-├── requirements.txt
-├── .gitignore
-├── data/
-│   ├── raw/                      # original downloads (gitignored when large)
-│   ├── processed/                # scaled, windowed feather/parquet
-│   └── README.md                 # how to obtain each dataset
-├── src/
-│   ├── __init__.py
-│   ├── data_loader.py            # load_hai(), load_morris()
-│   ├── preprocessing.py          # scale, sliding windows, train/test split
-│   ├── evaluation.py             # precision, recall, F1, ROC, confusion matrix, plots
-│   ├── utils.py                  # seeding, paths
-│   └── models/
-│       ├── __init__.py
-│       ├── isolation_forest.py
-│       ├── ocsvm.py
-│       ├── autoencoder.py
-│       └── lstm_autoencoder.py
-├── notebooks/
-│   ├── 01_data_exploration.ipynb
-│   ├── 02_preprocessing.ipynb
-│   ├── 03_classical_models.ipynb
-│   ├── 04_deep_models.ipynb
-│   └── 05_results_comparison.ipynb
-└── results/
-    ├── figures/                  # .png plots
-    └── metrics/                  # .csv metric tables
-```
+- Config-driven experiments: `python -m experiments.run <yaml>` → one row per (seed, metric) in `results/metrics/summary.parquet`.
+- 4 baselines under a common ABC: Isolation Forest, One-Class SVM, PyTorch Dense AE, PyTorch LSTM-AE.
+- Three metrics with unit tests: `src/evaluation/{pointwise,point_adjust,etapr}.py`.
+- Leak assertion: scaler fits on train split only and asserts no attack rows present (see `tests/test_preprocessing.py`).
+- CI: ruff + pytest on push/PR; 29 tests green.
+- Thin notebooks: 01/02 data-level, 03/06 read parquet, 04/05/07 placeholders.
 
-## Methodology
+## Reproducibility checkpoint (Phase 1 gate)
 
-1. **Exploration** — distributions, correlations, sensor-wise plots, attack-window visualization.
-2. **Preprocessing** — min-max scaling fitted on normal data only; sliding windows for LSTM; 70/15/15 split on normal data; all attack rows go to the test set.
-3. **Training** — unsupervised on normal data; thresholds tuned on validation set via best-F1 sweep.
-4. **Evaluation** — precision, recall, F1, ROC-AUC, PR-AUC, confusion matrix per model × dataset.
-5. **Comparison** — side-by-side bar charts and LaTeX-ready metric tables.
+HAI LSTM-AE, seed 42, val-percentile threshold=99:
 
-## Deliverables
+| Metric | F1 |
+|---|---|
+| Pointwise | 0.105 |
+| Point-adjust | 0.221 |
+| eTaPR | 0.147 |
 
-- Reproducible Jupyter notebooks with narrative, code, plots, metrics.
-- `results/figures/` and `results/metrics/` committed for thesis inclusion.
-- Public GitHub repo: `mapeke/ics-anomaly-detection`.
+Shin et al. 2020 report ~0.37–0.45 eTaPR F1 for LSTM-style baselines on HAI 1.0 (20.07). Our gap is attributed to:
+- HAI 21.03 attack set ≠ 20.07 — no strict reproduction possible without the old release.
+- Conservative `val_percentile=99` threshold; paper uses oracle/test-tuned cutoffs.
+- CPU-capped training (10 epochs, 30k windows).
 
-## Verification
+Per CLAUDE.md §6, documenting the gap instead of tuning to match. This is a thesis finding in itself.
 
-- `python -c "import src.data_loader as d; d.load_hai(); d.load_morris()"` loads both datasets.
-- Each notebook runs top-to-bottom with no errors (`jupyter nbconvert --execute`).
-- `results/metrics/summary.csv` contains one row per (model, dataset) pair with all metrics populated.
+## Immediate next steps
 
-## Critical Files
+1. Run remaining Phase 1 baselines to populate `summary.parquet` fully (6 configs outstanding).
+2. Execute `03_baseline_results.ipynb` and `06_metric_sensitivity.ipynb` on the populated parquet.
+3. Decide compute path for Phase 2 (TranAD is ~2–4 GPU-hrs/run on HAI).
+4. Advisor sign-off on the three-contribution framing (CLAUDE.md §8 open question).
 
-- `src/data_loader.py` — dataset loaders, must handle HAI's multi-CSV layout and Morris's ARFF format.
-- `src/preprocessing.py` — sliding-window utility shared by LSTM and classical pipelines.
-- `src/models/lstm_autoencoder.py` — Keras sequence AE; GPU optional.
-- `notebooks/05_results_comparison.ipynb` — the headline artifact for the thesis defense.
+## Open questions for the user
+
+1. GPU/compute plan before Phase 2 starts.
+2. Advisor approval on contributions and scope.
+3. Continue targeting workshop venues or pivot to longer-form thesis-only?
+
+## Verification (definition of done)
+
+- `python -m experiments.run` reproduces every number in the thesis from committed YAML configs.
+- `summary.parquet` has one row per (model, dataset_train, dataset_test, metric, seed) tuple, 3+ seeds per cell.
+- All figures in `results/figures/` are script-generated.
+- Every model class has a smoke test in CI.
