@@ -1,0 +1,17 @@
+name: baseline_morris_ocsvm
+data:
+  dataset: morris
+  val_frac: 0.15
+  seed: 42
+model:
+  name: ocsvm
+  params:
+    nu: 0.05
+    max_samples: 10000
+train:
+  device: cpu
+eval:
+  threshold_method: val_percentile
+  val_percentile: 99.0
+  metrics: [pointwise, point_adjust, etapr]
+seeds: [42, 7, 123]

@@ -1,0 +1,25 @@
+name: baseline_morris_lstm_ae
+data:
+  dataset: morris
+  window: 30
+  stride: 5
+  val_frac: 0.15
+  seed: 42
+model:
+  name: lstm_ae
+  params:
+    hidden_dim: 32
+    latent_dim: 16
+train:
+  epochs: 10
+  batch_size: 128
+  learning_rate: 0.001
+  device: cpu
+eval:
+  threshold_method: val_percentile
+  val_percentile: 99.0
+  metrics: [pointwise, point_adjust, etapr]
+seeds: [42]
+notes: |
+  Morris windowing is degenerate at small strides (every window contains
+  an attack frame); noted in thesis as a windowing-protocol limitation.

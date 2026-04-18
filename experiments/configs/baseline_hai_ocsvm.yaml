@@ -1,0 +1,19 @@
+name: baseline_hai_ocsvm
+data:
+  dataset: hai
+  window: null
+  val_frac: 0.15
+  seed: 42
+  subsample_train: 50000   # OCSVM caps internally; keep feed small
+model:
+  name: ocsvm
+  params:
+    nu: 0.05
+    max_samples: 10000
+train:
+  device: cpu
+eval:
+  threshold_method: val_percentile
+  val_percentile: 99.0
+  metrics: [pointwise, point_adjust, etapr]
+seeds: [42, 7, 123]
