@@ -6,10 +6,11 @@ This is an undergraduate diploma project titled **"Industrial Control System Ano
 
 ## Datasets (2)
 
-1. **HAI 23.05** — HIL-based Augmented ICS Security Dataset (ETRI).
+1. **HAI 21.03** — HIL-based Augmented ICS Security Dataset (ETRI).
    - Source: https://github.com/icsdataset/hai
-   - Characteristics: multivariate time series from boiler, turbine, water-treatment, and HIL simulator processes; labeled attack windows.
+   - Characteristics: multivariate time series from boiler, turbine, water-treatment, and HIL simulator processes; labeled attack windows across three sub-processes (`attack_P1/P2/P3`).
    - License: CC BY 4.0 (public).
+   - Note: defaulting to 21.03 because 22.04/23.05 require Git LFS and the upstream LFS budget is exhausted. 21.03 is the version most widely cited in academic literature.
 2. **Morris Gas Pipeline Dataset** — Mississippi State University.
    - Source: https://sites.google.com/a/uah.edu/tommy-morris-uah/ics-data-sets
    - Characteristics: Modbus RTU telemetry from a gas pipeline testbed; labeled command-injection, response-injection, and reconnaissance attacks.

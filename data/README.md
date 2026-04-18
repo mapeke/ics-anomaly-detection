@@ -2,7 +2,7 @@
 
 Both datasets are **not** checked into git (see repo `.gitignore`). Retrieve them locally before running any notebook.
 
-## 1. HAI 23.05
+## 1. HAI 21.03
 
 Official repo: https://github.com/icsdataset/hai (CC BY 4.0)
 
@@ -11,20 +11,26 @@ cd data/raw
 git clone --depth 1 https://github.com/icsdataset/hai.git hai
 ```
 
+We default to the **HAI 21.03** release because newer releases (22.04, 23.05)
+are stored via Git LFS and the repository's LFS budget is currently
+exhausted, causing smudge failures on clone. HAI 20.07 and 21.03 are plain
+gzipped CSVs that check out normally.
+
 Expected layout after cloning:
 
 ```
 data/raw/hai/
-├── hai-23.05/
-│   ├── train1.csv
-│   ├── train2.csv
-│   ├── ...
-│   └── test*.csv
-├── hai-22.04/
+├── hai-21.03/
+│   ├── train1.csv.gz
+│   ├── train2.csv.gz
+│   ├── train3.csv.gz
+│   ├── test1.csv.gz
+│   └── ...
+├── hai-20.07/
 └── README.md
 ```
 
-Our loader (`src/data_loader.py::load_hai`) uses the `hai-23.05` release by default.
+Our loader (`src/data_loader.py::load_hai`) uses `hai-21.03` by default.
 
 ## 2. Morris Gas Pipeline
 
