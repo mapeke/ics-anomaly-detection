@@ -1,6 +1,13 @@
-"""Dataset loaders for HAI and Morris Gas Pipeline."""
+"""Dataset loaders for HAI and Morris Gas Pipeline.
+
+Both loaders return a :class:`DatasetBundle` with a unified schema:
+    timestamps, features (DataFrame), labels (0/1), attack_ids (str),
+plus a `split` column marking train/val/test. Feature DataFrame never
+contains the label or any metadata that would leak into a model.
+"""
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -9,8 +16,51 @@ import pandas as pd
 from .utils import RAW_DIR
 
 
+@dataclass
+class DatasetBundle:
+    """Everything a model or metric needs about a dataset.
+
+    Attributes:
+        features: (T, F) DataFrame of numeric sensor/feature columns only.
+        labels:   (T,)   int8 array, 0 = normal, 1 = any attack.
+        attack_ids: (T,) object array naming the attack type per row
+                    (``"normal"`` for benign rows).
+        timestamps: (T,) optional datetime64 index; ``None`` when absent.
+        split:    (T,)   str array with values in {"train", "val", "test"}.
+                    Train/val contain *only* normal rows; test is mixed.
+        name:     dataset label (``"hai"`` or ``"morris"``).
+    """
+
+    features: pd.DataFrame
+    labels: np.ndarray
+    attack_ids: np.ndarray
+    split: np.ndarray
+    name: str
+    timestamps: np.ndarray | None = None
+    metadata: dict = field(default_factory=dict)
+
+    def mask(self, split: str) -> np.ndarray:
+        return self.split == split
+
+    def X(self, split: str) -> np.ndarray:
+        return self.features.to_numpy(dtype=np.float32)[self.mask(split)]
+
+    def y(self, split: str) -> np.ndarray:
+        return self.labels[self.mask(split)]
+
+    def assert_no_attack_in_train_val(self) -> None:
+        for s in ("train", "val"):
+            m = self.mask(s)
+            if m.any() and int(self.labels[m].sum()) > 0:
+                raise AssertionError(
+                    f"Attack rows leaked into '{s}' split "
+                    f"(n_attacks={int(self.labels[m].sum())}). "
+                    "This would invalidate every downstream ICS metric."
+                )
+
+
 # ---------------------------------------------------------------------------
-# HAI 23.05
+# HAI 21.03
 # ---------------------------------------------------------------------------
 
 HAI_ROOT = RAW_DIR / "hai"
@@ -38,10 +88,7 @@ def _find_hai_dir() -> Path:
 
 
 def _read_hai_csvs(paths: list[Path]) -> pd.DataFrame:
-    frames = []
-    for p in sorted(paths):
-        # pandas auto-detects gzip via the .gz suffix.
-        frames.append(pd.read_csv(p))
+    frames = [pd.read_csv(p) for p in sorted(paths)]  # pandas auto-detects gzip
     return pd.concat(frames, ignore_index=True)
 
 
@@ -52,11 +99,11 @@ def _detect_col(df: pd.DataFrame, candidates: tuple[str, ...]) -> str | None:
     return None
 
 
-def load_hai() -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Return (train_df, test_df) for HAI 23.05.
+def _load_hai_raw() -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Back-compat: return (train_df, test_df) with `label` column but no split info.
 
-    Train: normal-only operational data (train*.csv).
-    Test: attack-labelled data (test*.csv) with a binary `label` column.
+    Kept for existing notebooks; new code should call :func:`load_hai` to get a
+    :class:`DatasetBundle`.
     """
     root = _find_hai_dir()
     patterns = ("train*.csv", "train*.csv.gz", "hai-train*.csv", "hai-train*.csv.gz")
@@ -68,46 +115,79 @@ def load_hai() -> tuple[pd.DataFrame, pd.DataFrame]:
     for pat in test_patterns:
         test_csvs.extend(root.glob(pat))
     if not train_csvs or not test_csvs:
-        raise FileNotFoundError(
-            f"No train*/test* CSVs found in {root}. Check dataset layout."
-        )
+        raise FileNotFoundError(f"No train*/test* CSVs found in {root}.")
 
     train_df = _read_hai_csvs(train_csvs)
     test_df = _read_hai_csvs(test_csvs)
 
-    # Normalise the label column to `label` (binary int).
-    label_col = _detect_col(test_df, HAI_LABEL_COLS)
-    if label_col is None:
-        # HAI 23.05 sometimes uses multiple Attack_* flags; aggregate them.
-        flag_cols = [c for c in test_df.columns if c.lower().startswith("attack")]
-        if flag_cols:
-            test_df["label"] = (test_df[flag_cols].sum(axis=1) > 0).astype(int)
-        else:
-            raise KeyError("Could not locate attack/label column in HAI test CSVs.")
-    elif label_col != "label":
-        test_df = test_df.rename(columns={label_col: "label"})
-    test_df["label"] = test_df["label"].astype(int)
-
-    # Training data is normal by construction.
-    train_df = train_df.copy()
-    if _detect_col(train_df, HAI_LABEL_COLS) is None:
-        train_df["label"] = 0
-
-    # Drop timestamp columns if present (keep only numeric sensor channels).
+    # Drop timestamp columns if non-numeric.
     for name in ("train", "test"):
         df = train_df if name == "train" else test_df
         t = _detect_col(df, HAI_TIME_COLS)
         if t is not None and not pd.api.types.is_numeric_dtype(df[t]):
             df.drop(columns=[t], inplace=True)
 
-    # Consolidate HAI's per-process attack flags into a single `label` column.
+    # Consolidate per-process attack flags into a single `label` and keep the
+    # first triggered per-process flag as the attack-id string. The bare
+    # `attack` column (a global aggregate) is excluded from attack-id
+    # resolution so we recover the semantically meaningful P1/P2/P3 tags.
     for df in (train_df, test_df):
-        attack_flags = [c for c in df.columns if c.lower().startswith("attack")]
-        if attack_flags:
-            df["label"] = (df[attack_flags].sum(axis=1) > 0).astype(int)
-            df.drop(columns=attack_flags, inplace=True)
+        all_flags = [c for c in df.columns if c.lower().startswith("attack")]
+        if not all_flags:
+            continue
+        per_process = [c for c in all_flags if c.lower() != "attack"]
+        flag_mat = df[all_flags].to_numpy()
+        df["label"] = (flag_mat.sum(axis=1) > 0).astype(np.int8)
+        if per_process:
+            pp_mat = df[per_process].to_numpy()
+            first_hit = np.argmax(pp_mat > 0, axis=1)
+            attack_id = np.array(per_process)[first_hit]
+            # Rows where no per-process flag fired but `attack` did: tag "attack".
+            pp_any = pp_mat.sum(axis=1) > 0
+            attack_id = np.where(pp_any, attack_id, "attack")
+            df["attack_id"] = np.where(df["label"].to_numpy() > 0, attack_id, "normal")
+        else:
+            df["attack_id"] = np.where(df["label"].to_numpy() > 0, "attack", "normal")
+        df.drop(columns=all_flags, inplace=True)
 
     return train_df, test_df
+
+
+def load_hai(val_frac: float = 0.15, seed: int = 42) -> DatasetBundle:
+    """Load HAI 21.03 into a :class:`DatasetBundle` with train/val/test splits."""
+    train_df, test_df = _load_hai_raw()
+
+    rng = np.random.default_rng(seed)
+    idx = rng.permutation(len(train_df))
+    n_val = int(len(train_df) * val_frac)
+    val_idx, train_idx = idx[:n_val], idx[n_val:]
+
+    # Assemble a single frame with split labels so downstream code is uniform.
+    train_df = train_df.reset_index(drop=True)
+    test_df = test_df.reset_index(drop=True)
+
+    split = np.empty(len(train_df) + len(test_df), dtype=object)
+    split[train_idx] = "train"
+    split[val_idx] = "val"
+    split[len(train_df):] = "test"
+
+    combined = pd.concat([train_df, test_df], ignore_index=True)
+    feature_cols = [c for c in combined.columns if c not in ("label", "attack_id")]
+    features = combined[feature_cols].astype(np.float32)
+    labels = combined["label"].to_numpy(dtype=np.int8)
+    attack_ids = combined.get("attack_id", pd.Series(["normal"] * len(combined))).to_numpy()
+
+    bundle = DatasetBundle(
+        features=features,
+        labels=labels,
+        attack_ids=attack_ids,
+        split=split.astype(str),
+        name="hai",
+        timestamps=None,
+        metadata={"release": HAI_RELEASE, "val_frac": val_frac, "seed": seed},
+    )
+    bundle.assert_no_attack_in_train_val()
+    return bundle
 
 
 # ---------------------------------------------------------------------------
@@ -121,37 +201,26 @@ MORRIS_DEFAULT_FILE = "IanArffDataset.arff"
 def _parse_arff_header(path: Path) -> tuple[list[str], int]:
     """Return (attribute_names, data_start_lineno) for an ARFF file."""
     attrs: list[str] = []
-    with open(path, "r", encoding="utf-8", errors="replace") as f:
+    with open(path, encoding="utf-8", errors="replace") as f:
         for i, line in enumerate(f, start=1):
             s = line.strip()
             if not s or s.startswith("%"):
                 continue
             low = s.lower()
             if low.startswith("@attribute"):
-                # @attribute 'name' type  — grab the quoted or bare name.
                 rest = s.split(None, 1)[1]
-                if rest.startswith("'"):
-                    name = rest.split("'", 2)[1]
-                else:
-                    name = rest.split(None, 1)[0]
+                name = rest.split("'", 2)[1] if rest.startswith("'") else rest.split(None, 1)[0]
                 attrs.append(name)
             elif low.startswith("@data"):
                 return attrs, i
     raise ValueError(f"No @data section found in {path}")
 
 
-def load_morris(filename: str = MORRIS_DEFAULT_FILE) -> pd.DataFrame:
-    """Load the Morris gas-pipeline ARFF file into a DataFrame.
-
-    Parses the ARFF header manually, then reads the data block with pandas
-    (tolerant of malformed rows and `?` missing-value markers that trip up
-    strict ARFF parsers like liac-arff).
-    """
+def _load_morris_raw(filename: str = MORRIS_DEFAULT_FILE) -> pd.DataFrame:
+    """Parse Morris ARFF and return a DataFrame with `label` and `attack_id`."""
     path = MORRIS_ROOT / filename
     if not path.exists():
-        raise FileNotFoundError(
-            f"{path} not found. See data/README.md for retrieval instructions."
-        )
+        raise FileNotFoundError(f"{path} not found. See data/README.md.")
 
     attrs, data_line = _parse_arff_header(path)
     df = pd.read_csv(
@@ -164,79 +233,118 @@ def load_morris(filename: str = MORRIS_DEFAULT_FILE) -> pd.DataFrame:
         engine="python",
     )
 
-    # Find the label-like column.
-    label_col = None
-    for candidate in ("binary result", "binary_result", "result", "class", "label"):
-        if candidate in df.columns:
-            label_col = candidate
-            break
+    # Detect label column.
+    label_col = next(
+        (c for c in ("binary result", "binary_result", "result", "class", "label") if c in df.columns),
+        None,
+    )
     if label_col is None:
-        raise KeyError(
-            "Could not locate a label column in Morris ARFF; "
-            f"available columns: {list(df.columns)}"
-        )
+        raise KeyError(f"No label column in Morris ARFF; cols: {list(df.columns)}")
 
-    # Label formats vary between Morris releases:
-    #   - IanArffDataset: 'binary result' — numeric 0/1 (one NaN row at tail).
-    #   - gas_final.arff: categorical 'result' — 'Normal' vs attack-type strings.
+    # Specific/categorized result gives us attack-id strings.
+    attack_id_col = next(
+        (c for c in ("categorized result", "categorized_result", "specific result", "result") if c in df.columns),
+        None,
+    )
+
     col = df[label_col]
     if pd.api.types.is_numeric_dtype(col):
-        df["label"] = col.fillna(0).astype(int).clip(0, 1)
+        df["label"] = col.fillna(0).astype(np.int8).clip(0, 1)
     else:
         raw = col.astype(str).str.strip().str.lower()
-        df["label"] = (~raw.str.startswith("normal")).astype(int)
+        df["label"] = (~raw.str.startswith("normal")).astype(np.int8)
 
-    # Drop label/metadata columns so they never leak into features downstream.
-    # Also drop raw UNIX timestamp — monotonic across the file and would let
-    # a model trivially separate train (normal-only) vs test splits.
-    leak_cols = {
-        "binary result",
-        "binary_result",
-        "categorized result",
-        "categorized_result",
-        "specific result",
-        "specific_result",
-        "result",
-        "class",
-        "time",
-    } - {"label"}
-    drop = [c for c in df.columns if c in leak_cols and c != "label"]
-    df = df.drop(columns=drop)
+    if attack_id_col is not None:
+        df["attack_id"] = df[attack_id_col].astype(str).where(df["label"] == 1, "normal")
+    else:
+        df["attack_id"] = np.where(df["label"] == 1, "attack", "normal")
 
-    # Coerce feature columns to numeric (ARFF may quote them).
-    for col in df.columns:
-        if col == "label":
-            continue
-        df[col] = pd.to_numeric(df[col], errors="coerce")
+    # Drop leak/metadata columns and monotonic time.
+    leak = {
+        "binary result", "binary_result",
+        "categorized result", "categorized_result",
+        "specific result", "specific_result",
+        "result", "class", "time",
+    }
+    df = df.drop(columns=[c for c in df.columns if c in leak])
 
-    # Morris rows legitimately have missing values for fields that aren't
-    # relevant to a given Modbus function code. Impute with 0 rather than
-    # dropping; the downstream scaler treats 0 as "field not present".
-    feature_cols = [c for c in df.columns if c != "label"]
+    feature_cols = [c for c in df.columns if c not in ("label", "attack_id")]
+    for c in feature_cols:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
     df[feature_cols] = df[feature_cols].fillna(0.0)
-    df = df.reset_index(drop=True)
-    return df
+    return df.reset_index(drop=True)
 
 
-def morris_train_test_split(
-    df: pd.DataFrame, test_frac: float = 0.3, seed: int = 42
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Split Morris into (train=normal-only, test=mixed) for unsupervised AD.
+def load_morris(
+    val_frac: float = 0.15,
+    test_frac: float = 0.3,
+    seed: int = 42,
+    filename: str = MORRIS_DEFAULT_FILE,
+) -> DatasetBundle:
+    """Morris → unified :class:`DatasetBundle`.
 
-    We withhold a random fraction of normal rows for the test set and combine
-    them with all attack rows, matching the standard one-class protocol.
+    Splits: all attack rows go to test; normal rows are partitioned
+    train/val/test by ``1 - val_frac - test_frac`` / ``val_frac`` / ``test_frac``.
     """
+    df = _load_morris_raw(filename=filename)
+
+    normal_idx = np.flatnonzero(df["label"].to_numpy() == 0)
+    attack_idx = np.flatnonzero(df["label"].to_numpy() == 1)
+
+    rng = np.random.default_rng(seed)
+    perm = rng.permutation(normal_idx)
+    n_test = int(len(normal_idx) * test_frac)
+    n_val = int(len(normal_idx) * val_frac)
+    test_normal = perm[:n_test]
+    val_idx = perm[n_test : n_test + n_val]
+    train_idx = perm[n_test + n_val :]
+
+    split = np.empty(len(df), dtype=object)
+    split[train_idx] = "train"
+    split[val_idx] = "val"
+    split[test_normal] = "test"
+    split[attack_idx] = "test"
+
+    feature_cols = [c for c in df.columns if c not in ("label", "attack_id")]
+    bundle = DatasetBundle(
+        features=df[feature_cols].astype(np.float32).reset_index(drop=True),
+        labels=df["label"].to_numpy(dtype=np.int8),
+        attack_ids=df["attack_id"].to_numpy(),
+        split=split.astype(str),
+        name="morris",
+        timestamps=None,
+        metadata={"filename": filename, "val_frac": val_frac, "test_frac": test_frac, "seed": seed},
+    )
+    bundle.assert_no_attack_in_train_val()
+    return bundle
+
+
+# ---------------------------------------------------------------------------
+# Back-compat wrappers for existing notebooks (01/02 call these directly).
+# ---------------------------------------------------------------------------
+
+def load_hai_legacy() -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Kept for notebooks 01/02; new code should use :func:`load_hai`."""
+    return _load_hai_raw()
+
+
+def morris_train_test_split(df: pd.DataFrame, test_frac: float = 0.3, seed: int = 42):
+    """Kept for notebooks 01/02; new code should use :func:`load_morris`."""
     rng = np.random.default_rng(seed)
     normal = df[df["label"] == 0].reset_index(drop=True)
     attack = df[df["label"] == 1].reset_index(drop=True)
-
     n_test_normal = int(len(normal) * test_frac)
     idx = rng.permutation(len(normal))
-    test_normal_idx = idx[:n_test_normal]
-    train_idx = idx[n_test_normal:]
-
+    test_normal_idx, train_idx = idx[:n_test_normal], idx[n_test_normal:]
     train_df = normal.iloc[train_idx].reset_index(drop=True)
-    test_df = pd.concat(
-        [normal.iloc[test_normal_idx], attack], ignore_index=True
-    ).sample(frac=1.0, random_state=seed).reset_index(drop=True)
+    test_df = (
+        pd.concat([normal.iloc[test_normal_idx], attack], ignore_index=True)
+        .sample(frac=1.0, random_state=seed)
+        .reset_index(drop=True)
+    )
     return train_df, test_df
+
+
+def load_morris_legacy(filename: str = MORRIS_DEFAULT_FILE) -> pd.DataFrame:
+    """Kept for notebooks 01/02; new code should use :func:`load_morris`."""
+    return _load_morris_raw(filename)

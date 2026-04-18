@@ -1,16 +1,17 @@
-"""Preprocessing: scaling, sliding windows, train/val splits."""
+"""Preprocessing: scaling (normal-only fit, asserted), windowing, thresholds."""
 from __future__ import annotations
 
 from dataclasses import dataclass
 
 import numpy as np
-import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
+
+from .data_loader import DatasetBundle
 
 
 @dataclass
-class ScaledData:
-    """Container for scaled training/validation/test arrays and their labels."""
+class ScaledArrays:
+    """Scaled numeric arrays aligned to a DatasetBundle's splits."""
 
     X_train: np.ndarray
     X_val: np.ndarray
@@ -20,41 +21,29 @@ class ScaledData:
     scaler: MinMaxScaler
 
 
-def prepare_tabular(
-    train_df: pd.DataFrame,
-    test_df: pd.DataFrame,
-    label_col: str = "label",
-    val_frac: float = 0.15,
-    seed: int = 42,
-) -> ScaledData:
-    """Scale features to [0, 1] using statistics from the normal training set.
+def scale_bundle(bundle: DatasetBundle) -> ScaledArrays:
+    """Fit MinMaxScaler on the *train* split only; transform all splits.
 
-    Assumes train_df contains only normal data (label == 0).
+    Asserts that the train and val splits contain no attack rows. This is the
+    single most common source of inflated numbers in published ICS AD papers
+    so we guard it here rather than trusting caller discipline.
     """
-    features = [c for c in train_df.columns if c != label_col]
-    # Keep only columns present in both, in a stable order.
-    features = [c for c in features if c in test_df.columns]
+    bundle.assert_no_attack_in_train_val()
 
-    X_train_full = train_df[features].to_numpy(dtype=np.float32)
-    X_test = test_df[features].to_numpy(dtype=np.float32)
-    y_test = test_df[label_col].to_numpy(dtype=np.int32)
-
-    rng = np.random.default_rng(seed)
-    n_val = int(len(X_train_full) * val_frac)
-    idx = rng.permutation(len(X_train_full))
-    val_idx, train_idx = idx[:n_val], idx[n_val:]
+    feature_names = list(bundle.features.columns)
+    X_train = bundle.X("train")
+    X_val = bundle.X("val")
+    X_test = bundle.X("test")
+    y_test = bundle.y("test")
 
     scaler = MinMaxScaler(clip=True)
-    X_train = scaler.fit_transform(X_train_full[train_idx])
-    X_val = scaler.transform(X_train_full[val_idx])
-    X_test = scaler.transform(X_test)
-
-    return ScaledData(
-        X_train=X_train.astype(np.float32),
-        X_val=X_val.astype(np.float32),
-        X_test=X_test.astype(np.float32),
+    scaler.fit(X_train)
+    return ScaledArrays(
+        X_train=scaler.transform(X_train).astype(np.float32),
+        X_val=scaler.transform(X_val).astype(np.float32),
+        X_test=scaler.transform(X_test).astype(np.float32),
         y_test=y_test,
-        feature_names=features,
+        feature_names=feature_names,
         scaler=scaler,
     )
 
@@ -83,3 +72,15 @@ def window_labels(y: np.ndarray, window: int, stride: int = 1) -> np.ndarray:
         start = i * stride
         out[i] = int(y[start : start + window].any())
     return out
+
+
+def percentile_threshold(val_scores: np.ndarray, percentile: float = 99.0) -> float:
+    """Threshold = p-th percentile of validation (normal) anomaly scores.
+
+    The "no-attack-in-validation" protocol: anything above the Pth percentile
+    on clean data is considered abnormal. Avoids using test labels for
+    threshold selection.
+    """
+    if not 0.0 < percentile < 100.0:
+        raise ValueError(f"percentile must be in (0, 100), got {percentile}")
+    return float(np.percentile(val_scores, percentile))
