@@ -78,6 +78,16 @@ def run_once(run: RunConfig, seed: int) -> list[dict]:
         raise RuntimeError(
             f"model {run.model.name} does not implement attribute()."
         )
+    method = getattr(run, "_attribution_method", "reconstruction")
+    if method == "attention":
+        if not hasattr(model, "attribute_attention"):
+            raise RuntimeError(
+                f"model {run.model.name} has no attribute_attention(); "
+                "only TranAD supports the attention path currently."
+            )
+        attr_fn = model.attribute_attention
+    else:
+        attr_fn = model.attribute
 
     # Attribution only on the attack windows — normal rows would dilute
     # the per-process average.
@@ -92,7 +102,7 @@ def run_once(run: RunConfig, seed: int) -> list[dict]:
     attribs = []
     B = 2048
     for i in range(0, len(X_attacks), B):
-        attribs.append(model.attribute(X_attacks[i : i + B]))
+        attribs.append(attr_fn(X_attacks[i : i + B]))
     attr = np.concatenate(attribs, axis=0)  # (N_attack, F)
 
     per_proc = precision_at_k_by_attack(attr, feat_names, tags_attacks, K_VALUES)
@@ -106,6 +116,7 @@ def run_once(run: RunConfig, seed: int) -> list[dict]:
         "fit_seconds": fit_seconds,
         "n_attack_windows": int(len(X_attacks)),
         "n_features": int(X_attacks.shape[-1]),
+        "attribution_method": method,
     }
 
     rows = []
@@ -137,10 +148,12 @@ def append_attribution(rows: list[dict]) -> Path:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("config", type=Path)
+    ap.add_argument("--method", choices=("reconstruction", "attention"), default="reconstruction")
     args = ap.parse_args()
 
     run = RunConfig.from_yaml(args.config)
-    print(f">> {run.name}  (hash={run.hash()})  attribution")
+    run._attribution_method = args.method  # type: ignore[attr-defined]
+    print(f">> {run.name}  (hash={run.hash()})  attribution [{args.method}]")
     print(f"   dataset={run.data.dataset}  model={run.model.name}  seeds={run.seeds}")
 
     all_rows = []

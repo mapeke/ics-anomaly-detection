@@ -115,6 +115,26 @@ class _TranAD(nn.Module):
         o2 = torch.sigmoid(self.decoder2(h2))
         return o1, o2
 
+    def encoder_attention(self, x: torch.Tensor, focus: torch.Tensor) -> torch.Tensor:
+        """Return encoder self-attention weights averaged over heads,
+        shape ``(B, W, W)``. Bypasses the encoder's .forward to pick up
+        ``need_weights=True`` from ``MultiheadAttention``.
+        """
+        # Input projection + positional encoding identical to .encode().
+        h = torch.cat([x, focus], dim=-1)
+        h = self.input_proj(h)
+        h = self.pos(h)
+
+        layer = self.encoder.layers[0]
+        # PyTorch TransformerEncoderLayer has norm_first False by default;
+        # self-attn is sub-block 1. We only need the attn weights.
+        _, attn = layer.self_attn(
+            h, h, h,
+            need_weights=True,
+            average_attn_weights=True,   # average over heads for rollout
+        )
+        return attn                      # (B, W, W)
+
 
 class TranADModel(AnomalyDetector):
     name = "tranad"
@@ -225,3 +245,40 @@ class TranADModel(AnomalyDetector):
 
     def attribute(self, X: np.ndarray) -> np.ndarray:
         return self._per_window_se(X).mean(axis=1)
+
+    def attribute_attention(self, X: np.ndarray, batch_size: int | None = None) -> np.ndarray:
+        """Attention-weighted per-feature attribution.
+
+        For each window, weight the per-(timestep, feature) reconstruction
+        error by the encoder's attention mass: if output position *t* attends
+        strongly to input position *i*, position *i*'s features contribute
+        more to the window's attribution. Single-layer rollout degenerates
+        to the attention matrix itself; we average it over output positions
+        to get per-input-timestep weights, then sum the weighted per-feature
+        squared error over time.
+
+        Returns ``(N, F)`` — same schema as :py:meth:`attribute`, so the
+        Phase-4 evaluator can be reused.
+        """
+        self.model.eval()
+        bs = batch_size or self.batch_size
+        N, W, F = X.shape
+        out = np.empty((N, F), dtype=np.float32)
+        for i in range(0, N, bs):
+            chunk = torch.from_numpy(
+                np.ascontiguousarray(X[i : i + bs], dtype=np.float32)
+            ).to(self.device)
+            with torch.no_grad():
+                o1, o2 = self.model(chunk)                        # (B, W, F)
+                se = 0.5 * (chunk - o1) ** 2 + 0.5 * (chunk - o2) ** 2
+                # Use the *second-phase* encoder attention, since that path
+                # is the one conditioned on the residual.
+                residual = ((chunk - o1) ** 2).detach()
+                attn = self.model.encoder_attention(chunk, residual)  # (B, W, W)
+                # Aggregate over output positions → per-input-timestep weight.
+                w_time = attn.mean(dim=1)                         # (B, W)
+                w_time = w_time / (w_time.sum(dim=1, keepdim=True) + 1e-12)
+                # Weighted sum of per-(t, f) SE over time.
+                attr = (w_time.unsqueeze(-1) * se).sum(dim=1)     # (B, F)
+            out[i : i + bs] = attr.cpu().numpy()
+        return out
