@@ -24,7 +24,7 @@ Undergraduate diploma thesis, workshop-paper target, 4+ months from April 2026. 
 | Phase | Weeks | Goal | State |
 |---|---|---|---|
 | 1 | 1–4 | End-to-end pipeline, 4 baselines, 3 metrics, tests | ✅ **Complete** |
-| 2 | 5–8 | TranAD, USAD; reproduce HAI numbers within ±0.05 F1 | 🛠 In progress (USAD + TranAD implemented; CUDA torch installing) |
+| 2 | 5–8 | TranAD, USAD; reproduce HAI numbers within ±0.05 F1 | ✅ **Implemented; gap documented** (TranAD HAI PA-F1 = 0.46 vs paper 0.97 on 20.07 — well outside ±0.05; expected per CLAUDE.md repro-gap policy) |
 | 3 | 9–12 | HAI↔Morris transfer study + within-HAI LOPO | Not started |
 | 4 | 13–16 | Attribution, thesis writing, defense | Not started |
 
@@ -37,22 +37,34 @@ Undergraduate diploma thesis, workshop-paper target, 4+ months from April 2026. 
 - CI: ruff + pytest on push/PR; 29 tests green.
 - Thin notebooks: 01/02 data-level, 03/06 read parquet, 04/05/07 placeholders.
 
-## Reproducibility checkpoint (Phase 1 gate)
+## Reproducibility checkpoints
 
-HAI LSTM-AE, seed 42, val-percentile threshold=99:
+### Phase 1 — HAI LSTM-AE
+Seed 42, val-percentile threshold=99: pointwise 0.105, PA 0.221, eTaPR 0.147.
+Shin et al. 2020 report ~0.37–0.45 eTaPR for LSTM baselines on HAI 20.07. Gap attributed to dataset-version mismatch + conservative threshold + CPU-capped training.
 
-| Metric | F1 |
-|---|---|
-| Pointwise | 0.105 |
-| Point-adjust | 0.221 |
-| eTaPR | 0.147 |
+### Phase 2 — HAI TranAD
+Seed 42, GPU (RTX 3050 Ti, 4GB), 30 epochs: pointwise 0.189, PA 0.458, eTaPR 0.276.
+Tuli et al. 2022 report ~0.97 PA-F1 on HAI 20.07. **Gap of ~0.5 PA-F1.** Sources:
+- HAI 21.03 attack set differs from 20.07 (the working assumption).
+- 30k window subsample vs. paper's full data.
+- Single-layer encoder, d_model=64 vs. paper's larger config.
+- Percentile-99 threshold vs. paper's oracle PA-best threshold.
 
-Shin et al. 2020 report ~0.37–0.45 eTaPR F1 for LSTM-style baselines on HAI 1.0 (20.07). Our gap is attributed to:
-- HAI 21.03 attack set ≠ 20.07 — no strict reproduction possible without the old release.
-- Conservative `val_percentile=99` threshold; paper uses oracle/test-tuned cutoffs.
-- CPU-capped training (10 epochs, 30k windows).
+Per CLAUDE.md §6, documented honestly rather than tuned to fit. Note: TranAD still ranks #1 on HAI under PA-F1 in our results (0.458 vs LSTM-AE 0.221), preserving the paper's qualitative ordering even with absolute numbers diverging.
 
-Per CLAUDE.md §6, documenting the gap instead of tuning to match. This is a thesis finding in itself.
+## Phase 2 results — full 6×2 grid (eTaPR, mean over seeds)
+
+| Model | HAI | Morris |
+|---|---|---|
+| Isolation Forest | 0.243 | 0.145 |
+| One-Class SVM | 0.170 | 0.369 |
+| Dense AE | 0.057 | 0.356 |
+| LSTM-AE | 0.147 | n/a (degenerate windows) |
+| USAD | 0.151 | **0.009** (model collapse on discrete Modbus) |
+| TranAD | **0.276** | 0.339 |
+
+USAD on Morris collapses (test-attack scores ≈ test-normal scores) — likely because the MLP USAD treats Morris's mostly-integer Modbus features as continuous and over-generalises. Real finding for the thesis.
 
 ## Immediate next steps
 
