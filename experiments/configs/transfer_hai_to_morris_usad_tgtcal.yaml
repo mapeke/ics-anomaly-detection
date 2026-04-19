@@ -1,0 +1,33 @@
+name: transfer_hai_to_morris_usad_tgtcal
+data:
+  source_dataset: hai
+  target_dataset: morris
+  window: 60
+  stride: 10
+  val_frac: 0.15
+  seed: 42
+  subsample_train: 30000
+model:
+  name: usad
+  params:
+    hidden: 48
+    latent: 20
+    alpha: 0.5
+    beta: 0.5
+train:
+  epochs: 30
+  batch_size: 128
+  learning_rate: 0.001
+  device: cuda
+eval:
+  threshold_method: target_val_percentile
+  val_percentile: 99.0
+  metrics:
+  - pointwise
+  - point_adjust
+  - etapr
+seeds:
+- 42
+notes: '
+
+  Target-domain calibration variant: threshold = 99th percentile of target-val scores.'

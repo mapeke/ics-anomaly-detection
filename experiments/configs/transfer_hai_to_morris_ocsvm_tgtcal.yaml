@@ -1,0 +1,28 @@
+name: transfer_hai_to_morris_ocsvm_tgtcal
+data:
+  source_dataset: hai
+  target_dataset: morris
+  val_frac: 0.15
+  seed: 42
+  subsample_train: 50000
+model:
+  name: ocsvm
+  params:
+    nu: 0.05
+    max_samples: 10000
+train:
+  device: cpu
+eval:
+  threshold_method: target_val_percentile
+  val_percentile: 99.0
+  metrics:
+  - pointwise
+  - point_adjust
+  - etapr
+seeds:
+- 42
+- 7
+- 123
+notes: '
+
+  Target-domain calibration variant: threshold = 99th percentile of target-val scores.'

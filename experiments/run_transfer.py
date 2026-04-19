@@ -152,6 +152,7 @@ def run_once(run: TransferRunConfig, seed: int) -> list[dict]:
 
     X_tr, _ = _maybe_window(src.X_train, None, run.data.window, run.data.stride)
     X_val, _ = _maybe_window(src.X_val, None, run.data.window, run.data.stride)
+    X_tgt_val, _ = _maybe_window(tgt.X_val, None, run.data.window, run.data.stride)
     X_te, y_te = _maybe_window(tgt.X_test, tgt.y_test, run.data.window, run.data.stride)
 
     if run.data.subsample_train and len(X_tr) > run.data.subsample_train:
@@ -169,8 +170,18 @@ def run_once(run: TransferRunConfig, seed: int) -> list[dict]:
 
     if run.eval.threshold_method == "val_percentile":
         threshold = percentile_threshold(val_scores, run.eval.val_percentile)
+        threshold_source = "source_val"
+    elif run.eval.threshold_method == "target_val_percentile":
+        # Unlabeled target-normal calibration: score the target's val split
+        # (which is attack-free by construction) and take the same percentile.
+        # Isolates the 'does the representation transfer' question from the
+        # 'does the source-derived operating point transfer' question.
+        tgt_val_scores = model.score(X_tgt_val)
+        threshold = percentile_threshold(tgt_val_scores, run.eval.val_percentile)
+        threshold_source = "target_val"
     elif run.eval.threshold_method == "best_f1_oracle":
         threshold, _ = best_f1_threshold(test_scores, y_te)
+        threshold_source = "test_oracle"
     else:
         raise ValueError(run.eval.threshold_method)
 
@@ -184,6 +195,7 @@ def run_once(run: TransferRunConfig, seed: int) -> list[dict]:
         "seed": seed,
         "threshold": float(threshold),
         "threshold_method": run.eval.threshold_method,
+        "threshold_source": threshold_source,
         "fit_seconds": fit_seconds,
         "n_train": int(len(X_tr)),
         "n_test": int(len(X_te)),

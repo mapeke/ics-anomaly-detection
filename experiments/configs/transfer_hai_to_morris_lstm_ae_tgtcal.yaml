@@ -1,0 +1,34 @@
+name: transfer_hai_to_morris_lstm_ae_tgtcal
+data:
+  source_dataset: hai
+  target_dataset: morris
+  window: 60
+  stride: 10
+  val_frac: 0.15
+  seed: 42
+  subsample_train: 30000
+model:
+  name: lstm_ae
+  params:
+    hidden_dim: 32
+    latent_dim: 16
+train:
+  epochs: 10
+  batch_size: 256
+  learning_rate: 0.001
+  device: cpu
+eval:
+  threshold_method: target_val_percentile
+  val_percentile: 99.0
+  metrics:
+  - pointwise
+  - point_adjust
+  - etapr
+seeds:
+- 42
+notes: 'Phase-3 transfer. Narrower hidden/latent than baseline_hai_lstm_ae
+
+  (6-dim type-vector input).
+
+
+  Target-domain calibration variant: threshold = 99th percentile of target-val scores.'
