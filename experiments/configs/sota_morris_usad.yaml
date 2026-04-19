@@ -1,0 +1,27 @@
+name: sota_morris_usad
+data:
+  dataset: morris
+  window: 30
+  stride: 5
+  val_frac: 0.15
+  seed: 42
+model:
+  name: usad
+  params:
+    hidden: 100
+    latent: 40
+    alpha: 0.5
+    beta: 0.5
+train:
+  epochs: 30
+  batch_size: 128
+  learning_rate: 0.001
+  device: cuda
+eval:
+  threshold_method: val_percentile
+  val_percentile: 99.0
+  metrics: [pointwise, point_adjust, etapr]
+seeds: [42, 7, 123]
+notes: |
+  USAD on Morris. Same window/stride as Morris LSTM-AE for fair comparison.
+  GPU expected; falls back to CPU automatically if cuda unavailable.

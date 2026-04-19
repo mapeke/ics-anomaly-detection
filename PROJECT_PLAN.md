@@ -24,7 +24,7 @@ Undergraduate diploma thesis, workshop-paper target, 4+ months from April 2026. 
 | Phase | Weeks | Goal | State |
 |---|---|---|---|
 | 1 | 1–4 | End-to-end pipeline, 4 baselines, 3 metrics, tests | ✅ **Complete** |
-| 2 | 5–8 | TranAD, USAD; reproduce HAI numbers within ±0.05 F1 | Not started |
+| 2 | 5–8 | TranAD, USAD; reproduce HAI numbers within ±0.05 F1 | 🛠 In progress (USAD + TranAD implemented; CUDA torch installing) |
 | 3 | 9–12 | HAI↔Morris transfer study + within-HAI LOPO | Not started |
 | 4 | 13–16 | Attribution, thesis writing, defense | Not started |
 

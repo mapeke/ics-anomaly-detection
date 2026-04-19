@@ -58,8 +58,28 @@ def test_lstm_ae_fit_score_attribute(windowed):
     assert (attr >= 0).all()
 
 
+@pytest.mark.parametrize("name", ["usad", "tranad"])
+def test_sota_models_fit_score_attribute(windowed, name):
+    X_train, X_val, X_test = windowed
+    window, n_feat = X_train.shape[1:]
+    kwargs = dict(window=window, n_features=n_feat, epochs=2, batch_size=16)
+    if name == "tranad":
+        kwargs.update(d_model=16, n_heads=2, ff_dim=32)
+    elif name == "usad":
+        kwargs.update(hidden=32, latent=8)
+    model = build(name, **kwargs)
+    model.fit(X_train, X_val)
+    scores = model.score(X_test)
+    attr = model.attribute(X_test)
+    assert scores.shape == (len(X_test),)
+    assert attr.shape == (len(X_test), n_feat)
+    assert (attr >= 0).all()
+
+
 def test_registry_is_complete():
-    assert set(REGISTRY) == {"isolation_forest", "ocsvm", "dense_ae", "lstm_ae"}
+    assert set(REGISTRY) == {
+        "isolation_forest", "ocsvm", "dense_ae", "lstm_ae", "usad", "tranad",
+    }
 
 
 def test_base_ae_supports_attribution(tabular):

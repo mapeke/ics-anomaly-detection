@@ -1,0 +1,29 @@
+name: sota_hai_tranad
+data:
+  dataset: hai
+  window: 60
+  stride: 10
+  val_frac: 0.15
+  seed: 42
+  subsample_train: 30000
+model:
+  name: tranad
+  params:
+    d_model: 64
+    n_heads: 4
+    ff_dim: 128
+    dropout: 0.1
+train:
+  epochs: 30
+  batch_size: 64           # 4GB VRAM budget on RTX 3050 Ti Laptop
+  learning_rate: 0.0001
+  device: cuda
+eval:
+  threshold_method: val_percentile
+  val_percentile: 99.0
+  metrics: [pointwise, point_adjust, etapr]
+seeds: [42]
+notes: |
+  HAI TranAD reproducibility checkpoint. Tuli et al. report ~0.97 PA-F1
+  on HAI 20.07; we expect substantially lower on 21.03 due to different
+  attack set. Treat ±0.05 as informal sanity band per CLAUDE.md.

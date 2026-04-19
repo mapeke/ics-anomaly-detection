@@ -61,19 +61,22 @@ def _prepare_arrays(run: RunConfig):
     return X_train, X_val, X_test, y_test, scaled.feature_names
 
 
+_WINDOWED_MODELS = {"lstm_ae", "usad", "tranad"}
+_DEEP_MODELS = {"dense_ae", "lstm_ae", "usad", "tranad"}
+
+
 def _build_model(run: RunConfig, X_train: np.ndarray, seed: int):
     params = dict(run.model.params)
     # Auto-fill input-dim / window / n_features if the model needs them.
     if run.model.name == "dense_ae":
         params.setdefault("input_dim", X_train.shape[-1])
-        params.setdefault("device", run.train.device)
-    elif run.model.name == "lstm_ae":
+    if run.model.name in _WINDOWED_MODELS:
         if X_train.ndim != 3:
-            raise ValueError("lstm_ae requires a windowed dataset (data.window set).")
+            raise ValueError(f"{run.model.name} requires a windowed dataset (data.window set).")
         params.setdefault("window", X_train.shape[1])
         params.setdefault("n_features", X_train.shape[2])
+    if run.model.name in _DEEP_MODELS:
         params.setdefault("device", run.train.device)
-    if run.model.name in {"dense_ae", "lstm_ae"}:
         params.setdefault("epochs", run.train.epochs)
         params.setdefault("batch_size", run.train.batch_size)
         params.setdefault("learning_rate", run.train.learning_rate)

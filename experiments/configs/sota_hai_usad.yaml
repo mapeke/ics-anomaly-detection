@@ -1,0 +1,25 @@
+name: sota_hai_usad
+data:
+  dataset: hai
+  window: 60
+  stride: 10
+  val_frac: 0.15
+  seed: 42
+  subsample_train: 30000   # number of windows post-windowing
+model:
+  name: usad
+  params:
+    hidden: 100
+    latent: 40
+    alpha: 0.5
+    beta: 0.5
+train:
+  epochs: 30
+  batch_size: 128
+  learning_rate: 0.001
+  device: cuda
+eval:
+  threshold_method: val_percentile
+  val_percentile: 99.0
+  metrics: [pointwise, point_adjust, etapr]
+seeds: [42]

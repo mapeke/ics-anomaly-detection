@@ -11,12 +11,16 @@ from .base import AnomalyDetector
 from .isolation_forest import IsolationForestAD
 from .lstm_autoencoder import LSTMAutoencoderAD
 from .ocsvm import OneClassSVMAD
+from .tranad import TranADModel
+from .usad import USADModel
 
 REGISTRY: dict[str, type[AnomalyDetector]] = {
     IsolationForestAD.name: IsolationForestAD,
     OneClassSVMAD.name: OneClassSVMAD,
     DenseAutoencoderAD.name: DenseAutoencoderAD,
     LSTMAutoencoderAD.name: LSTMAutoencoderAD,
+    USADModel.name: USADModel,
+    TranADModel.name: TranADModel,
 }
 
 
@@ -33,6 +37,8 @@ __all__ = [
     "IsolationForestAD",
     "LSTMAutoencoderAD",
     "OneClassSVMAD",
+    "TranADModel",
+    "USADModel",
     "REGISTRY",
     "build",
 ]

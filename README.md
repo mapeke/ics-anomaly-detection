@@ -27,8 +27,8 @@ See [`data/README.md`](data/README.md) for retrieval. Raw data is gitignored.
 | One-Class SVM | Kernel | `src/models/ocsvm.py` |
 | Dense Autoencoder | PyTorch, tabular | `src/models/autoencoder.py` |
 | LSTM Autoencoder | PyTorch, sequence | `src/models/lstm_autoencoder.py` |
-
-Phase 2 adds USAD and TranAD.
+| USAD | PyTorch, adversarial AE | `src/models/usad.py` (Audibert et al. KDD 2020) |
+| TranAD | PyTorch, transformer + adversarial | `src/models/tranad.py` (Tuli et al. VLDB 2022) |
 
 ## Running an experiment
 

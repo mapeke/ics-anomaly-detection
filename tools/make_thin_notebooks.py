@@ -303,7 +303,67 @@ nb06 = nb([
 
 
 # ---------------------------------------------------------------------------
-# 04, 05, 07 — placeholders for later phases
+# 04 — SOTA results (USAD + TranAD vs. baselines)
+# ---------------------------------------------------------------------------
+
+nb04 = nb([
+    md("# 04 — SOTA results\n\n"
+       "Compare 6 models (4 baselines + USAD + TranAD) across both datasets\n"
+       "under all three metrics. Reads `results/metrics/summary.parquet`\n"
+       "produced by `experiments/run.py`.\n"),
+    code(
+        "import sys; from pathlib import Path\n"
+        "sys.path.insert(0, str(Path().resolve().parent))\n"
+        "\n"
+        "import numpy as np\n"
+        "import pandas as pd\n"
+        "import matplotlib.pyplot as plt\n"
+        "import seaborn as sns\n"
+        "\n"
+        "from src.utils import METRICS_DIR, save_figure\n"
+        "sns.set_theme(style='whitegrid', context='notebook')\n"
+    ),
+    code(
+        "df = pd.read_parquet(METRICS_DIR / 'summary.parquet')\n"
+        "df['F1'] = df['f1'].where(df['metric'] != 'etapr', df['etapr_f1'])\n"
+        "agg = df.groupby(['dataset', 'model', 'metric'])['F1'].mean().unstack('metric').round(3)\n"
+        "agg = agg.reindex(columns=['pointwise', 'point_adjust', 'etapr'])\n"
+        "agg\n"
+    ),
+    code(
+        "# Headline figure: 6 models per dataset, grouped by metric.\n"
+        "MODEL_ORDER = ['isolation_forest', 'ocsvm', 'dense_ae', 'lstm_ae', 'usad', 'tranad']\n"
+        "fig, axes = plt.subplots(1, 2, figsize=(13, 4.5), sharey=True)\n"
+        "for ax, ds in zip(axes, sorted(df['dataset'].unique())):\n"
+        "    sub = df[df['dataset'] == ds].groupby(['model', 'metric'])['F1'].mean().unstack('metric')\n"
+        "    sub = sub.reindex(index=[m for m in MODEL_ORDER if m in sub.index],\n"
+        "                      columns=['pointwise', 'point_adjust', 'etapr'])\n"
+        "    sub.plot(kind='bar', ax=ax, colormap='viridis', width=0.85)\n"
+        "    ax.set_title(f'{ds} — F1 by metric')\n"
+        "    ax.set_ylim(0, 1)\n"
+        "    ax.set_ylabel('F1')\n"
+        "    ax.legend(title='metric', loc='upper left', fontsize=8)\n"
+        "plt.tight_layout()\n"
+        "save_figure(fig, 'sota_six_model_comparison', subdir='04_sota')\n"
+        "plt.show()\n"
+    ),
+    md("## Markdown-ready summary"),
+    code(
+        "print(agg.to_markdown())\n"
+    ),
+    md(
+        "## Notes\n\n"
+        "- **PA-F1 inflation** is largest for OC-SVM/IF (which detect many isolated\n"
+        "  points) and smallest for SOTA models that produce more contiguous\n"
+        "  positive runs.\n"
+        "- Compare **eTaPR** column (most rigorous) for the headline ranking.\n"
+        "- See notebook 06 for the dedicated metric-sensitivity discussion.\n"
+    ),
+])
+
+
+# ---------------------------------------------------------------------------
+# 05, 07 — placeholders for later phases
 # ---------------------------------------------------------------------------
 
 def placeholder(title: str, phase: str) -> dict:
@@ -316,7 +376,7 @@ def placeholder(title: str, phase: str) -> dict:
 write(NOTEBOOKS / "01_data_exploration.ipynb", nb01)
 write(NOTEBOOKS / "02_preprocessing_sanity.ipynb", nb02)
 write(NOTEBOOKS / "03_baseline_results.ipynb", nb03)
-write(NOTEBOOKS / "04_sota_results.ipynb", placeholder("04 — SOTA results", "2"))
+write(NOTEBOOKS / "04_sota_results.ipynb", nb04)
 write(NOTEBOOKS / "05_cross_dataset.ipynb", placeholder("05 — Cross-dataset study", "3"))
 write(NOTEBOOKS / "06_metric_sensitivity.ipynb", nb06)
 write(NOTEBOOKS / "07_attribution.ipynb", placeholder("07 — Attribution", "4"))
