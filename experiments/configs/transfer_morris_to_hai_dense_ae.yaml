@@ -1,0 +1,20 @@
+name: transfer_morris_to_hai_dense_ae
+data:
+  source_dataset: morris
+  target_dataset: hai
+  val_frac: 0.15
+  seed: 42
+model:
+  name: dense_ae
+  params:
+    hidden: [32, 16, 8, 16, 32]
+train:
+  epochs: 25
+  batch_size: 512
+  learning_rate: 0.001
+  device: cuda
+eval:
+  threshold_method: val_percentile
+  val_percentile: 99.0
+  metrics: [pointwise, point_adjust, etapr]
+seeds: [42]

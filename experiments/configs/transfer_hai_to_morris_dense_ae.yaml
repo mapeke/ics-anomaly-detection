@@ -1,0 +1,25 @@
+name: transfer_hai_to_morris_dense_ae
+data:
+  source_dataset: hai
+  target_dataset: morris
+  val_frac: 0.15
+  seed: 42
+  subsample_train: 150000
+model:
+  name: dense_ae
+  params:
+    hidden: [32, 16, 8, 16, 32]   # 6-dim type-vector input — keep narrow
+train:
+  epochs: 25
+  batch_size: 512
+  learning_rate: 0.001
+  device: cuda
+eval:
+  threshold_method: val_percentile
+  val_percentile: 99.0
+  metrics: [pointwise, point_adjust, etapr]
+seeds: [42]
+notes: |
+  Phase-3 transfer baseline. Train Dense AE on HAI 21.03 type-vector
+  (6 dims), test on Morris type-vector. Expect substantial F1 drop vs.
+  same-dataset Morris/DenseAE (eTaPR ~0.36) per CLAUDE.md.

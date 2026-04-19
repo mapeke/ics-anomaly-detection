@@ -1,0 +1,133 @@
+# Per-feature canonical type tags for cross-dataset transfer (CLAUDE.md §5.2 option 1).
+#
+# Methodology: each raw feature is mapped to one canonical type. At
+# transfer time, schema_align.project_bundle reduces the feature matrix
+# to one column per type by aggregating same-typed features (default:
+# mean of the MinMax-scaled values; per-type override below).
+#
+# Types in the *intersection* of HAI and Morris define the cross-dataset
+# input space; types present in only one dataset are dropped (and that
+# information loss is part of the thesis discussion).
+#
+# Tag confidence:
+#   - HAI sensor names follow ISA-style conventions (PIT=pressure
+#     transmitter, FCV=flow control valve, *D=demand, *Z=feedback) where
+#     I'm fairly sure. Anonymous codes (P1_B2004 etc.) and vibration
+#     channels (P2_V*) are tagged "unknown" and excluded.
+
+# How aggregation works per type. mean is the default; max better
+# captures "any active" semantics for binary state flags.
+aggregations:
+  pressure: mean
+  pump_state: max
+  setpoint: mean
+  valve_position: max
+  control_signal: mean
+  system_state: max
+
+# -- HAI 21.03 ----------------------------------------------------------
+hai:
+  # Anonymous boiler codes — type unknown, exclude from transfer.
+  P1_B2004: unknown
+  P1_B2016: unknown
+  P1_B3004: unknown
+  P1_B3005: unknown
+  P1_B4002: unknown
+  P1_B4005: unknown
+  P1_B400B: unknown
+  P1_B4022: unknown
+  # Process P1 — boiler / water loop
+  P1_FCV01D: valve_setpoint
+  P1_FCV01Z: valve_position
+  P1_FCV02D: valve_setpoint
+  P1_FCV02Z: valve_position
+  P1_FCV03D: valve_setpoint
+  P1_FCV03Z: valve_position
+  P1_FT01: flow
+  P1_FT01Z: flow
+  P1_FT02: flow
+  P1_FT02Z: flow
+  P1_FT03: flow
+  P1_FT03Z: flow
+  P1_LCV01D: valve_setpoint
+  P1_LCV01Z: valve_position
+  P1_LIT01: level
+  P1_PCV01D: valve_setpoint
+  P1_PCV01Z: valve_position
+  P1_PCV02D: valve_setpoint
+  P1_PCV02Z: valve_position
+  P1_PIT01: pressure
+  P1_PIT02: pressure
+  P1_PP01AD: pump_state
+  P1_PP01AR: pump_state
+  P1_PP01BD: pump_state
+  P1_PP01BR: pump_state
+  P1_PP02D: pump_state
+  P1_PP02R: pump_state
+  P1_STSP: setpoint
+  P1_TIT01: temperature
+  P1_TIT02: temperature
+  # Process P2 — turbine controller (lots of discrete state flags)
+  P2_24Vdc: system_state
+  P2_ASD: system_state
+  P2_AutoGO: system_state
+  P2_CO_rpm: flow            # rotational speed treated as flow for transfer
+  P2_Emerg: system_state
+  P2_HILout: control_signal
+  P2_MSD: system_state
+  P2_ManualGO: system_state
+  P2_OnOff: system_state
+  P2_RTR: system_state
+  P2_SIT01: flow             # speed indicator
+  P2_SIT02: flow
+  P2_TripEx: system_state
+  # Vibration channels — no Morris analogue, exclude.
+  P2_VT01: unknown
+  P2_VTR01: unknown
+  P2_VTR02: unknown
+  P2_VTR03: unknown
+  P2_VTR04: unknown
+  P2_VXT02: unknown
+  P2_VXT03: unknown
+  P2_VYT02: unknown
+  P2_VYT03: unknown
+  # Process P3 — pumped-storage water loop
+  P3_FIT01: flow
+  P3_LCP01D: valve_setpoint
+  P3_LCV01D: valve_setpoint
+  P3_LH: system_state
+  P3_LIT01: level
+  P3_LL: system_state
+  P3_PIT01: pressure
+  # Process P4 — steam turbine
+  P4_HT_FD: setpoint         # feed demand (best-guess; documented)
+  P4_HT_LD: setpoint         # load demand
+  P4_HT_PO: pressure         # pressure out
+  P4_HT_PS: pressure         # pressure source
+  P4_LD: setpoint
+  P4_ST_FD: setpoint
+  P4_ST_GOV: valve_setpoint
+  P4_ST_LD: setpoint
+  P4_ST_PO: pressure
+  P4_ST_PS: pressure
+  P4_ST_PT01: pressure
+  P4_ST_TT01: temperature
+
+# -- Morris Gas Pipeline ------------------------------------------------
+morris:
+  address: comm_metadata
+  function: comm_metadata
+  length: comm_metadata
+  setpoint: setpoint
+  gain: control_signal
+  reset rate: control_signal
+  deadband: control_signal
+  cycle time: control_signal
+  rate: control_signal
+  system mode: system_state
+  control scheme: system_state
+  pump: pump_state
+  solenoid: valve_position
+  pressure measurement: pressure
+  crc rate: comm_metadata
+  command response: comm_metadata

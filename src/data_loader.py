@@ -272,6 +272,12 @@ def _load_morris_raw(filename: str = MORRIS_DEFAULT_FILE) -> pd.DataFrame:
     for c in feature_cols:
         df[c] = pd.to_numeric(df[c], errors="coerce")
     df[feature_cols] = df[feature_cols].fillna(0.0)
+    # Morris uses values near float32-MAX (~3.4e38) as a "no reading"
+    # sentinel (notably in 'pressure measurement'). These would dominate
+    # MinMax scaling and the schema-align mean. Treat any magnitude above
+    # a sane engineering range as missing.
+    SENTINEL_THR = 1e9
+    df[feature_cols] = df[feature_cols].mask(df[feature_cols].abs() > SENTINEL_THR, 0.0)
     return df.reset_index(drop=True)
 
 
