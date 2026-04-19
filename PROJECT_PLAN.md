@@ -23,19 +23,43 @@ Undergraduate diploma thesis, workshop-paper target, 4+ months from April 2026. 
 
 | Phase | Weeks | Goal | State |
 |---|---|---|---|
-| 1 | 1–4 | End-to-end pipeline, 4 baselines, 3 metrics, tests | ✅ **Complete** |
-| 2 | 5–8 | TranAD, USAD; reproduce HAI numbers within ±0.05 F1 | ✅ **Implemented; gap documented** (TranAD HAI PA-F1 = 0.46 vs paper 0.97 on 20.07 — well outside ±0.05; expected per CLAUDE.md repro-gap policy) |
-| 3 | 9–12 | HAI↔Morris transfer study + within-HAI LOPO | Not started |
-| 4 | 13–16 | Attribution, thesis writing, defense | Not started |
+| 1 | 1–4  | End-to-end pipeline, 4 baselines, 3 metrics, tests | ✅ **Complete** |
+| 2 | 5–8  | TranAD, USAD; reproduce HAI numbers within ±0.05 F1 | ✅ **Implemented; repro gap documented honestly** |
+| 3 | 9–12 | HAI↔Morris transfer + within-HAI LOPO | ✅ **Complete; three findings** |
+| 4 | 13–16 | Attribution + thesis writing + defense | 🔄 **Attribution complete; draft in progress** |
 
-## Phase 1 deliverables (complete)
+## Phase 3 results (complete)
 
-- Config-driven experiments: `python -m experiments.run <yaml>` → one row per (seed, metric) in `results/metrics/summary.parquet`.
-- 4 baselines under a common ABC: Isolation Forest, One-Class SVM, PyTorch Dense AE, PyTorch LSTM-AE.
-- Three metrics with unit tests: `src/evaluation/{pointwise,point_adjust,etapr}.py`.
-- Leak assertion: scaler fits on train split only and asserts no attack rows present (see `tests/test_preprocessing.py`).
-- CI: ruff + pytest on push/PR; 29 tests green.
-- Thin notebooks: 01/02 data-level, 03/06 read parquet, 04/05/07 placeholders.
+- **12 HAI↔Morris transfer runs × 2 calibration regimes** (src-cal, tgt-cal) = 24 configs.
+- **12 LOPO runs** (dense_ae / lstm_ae / usad × 4 held-out processes).
+- Notebook 05 with 4 figures; findings below.
+
+**Finding 3.1 — source-calibration collapse.** Under source-domain percentile threshold, every transferred detector degenerates to the predict-all baseline of the *target* class prior: F1 ≈ 0.95 on Morris (91% post-windowing attack rate) and F1 ≈ 0.05 on HAI (2.4%). Score distributions don't transfer, so any fixed operating point either flags everything or nothing.
+
+**Finding 3.2 — representation transfer (tgt-cal).** With the threshold chosen on *target-normal* validation data, the three windowed SOTA models separate from classical ones on HAI → Morris:
+
+| model | src-cal eTaPR | tgt-cal eTaPR | tgt-cal PA-F1 |
+|---|---|---|---|
+| dense_ae | 0.95 (trivial) | 0.07 | 0.14 |
+| ocsvm    | 0.95 (trivial) | 0.08 | 0.17 |
+| isolation_forest | 0.75 (trivial) | 0.13 | 0.22 |
+| **lstm_ae** | 0.98 (trivial) | **0.44** | **0.81** |
+| **tranad**  | 0.98 (trivial) | **0.38** | **0.77** |
+| **usad**    | 0.99 (trivial) | **0.40** | **0.74** |
+
+First real classical-vs-SOTA separation in the study; only visible when the threshold-transfer question is controlled for.
+
+**Finding 3.3 — LOPO isolates feature shift.** Dropping P2 features blinds models specifically to P2 attacks (dense_ae 0.03 F1 on P2-attacks vs. 0.41 on P1-attacks in the same config). Dropping P1 causes *global* degradation — P1 has 82% of test attacks and carries most of the "normal" signal. Best in-HAI LOPO F1 (~0.57, usad, drop-P3, on P1-attacks) is an order of magnitude above the best cross-dataset tgt-cal pointwise (~0.13) — sensor-level transfer inside one testbed vastly out-performs cross-testbed transfer.
+
+## Phase 4 results (partial)
+
+**Process-level attribution complete; TranAD attention rollout implemented.**
+
+**Finding 4.1 — detection vs. localization tradeoff.** Dense AE, the weakest Phase-2 detector, is the only model whose per-feature attribution beats random across all three attacked processes (lift at p@5: P1=1.4×, P2=2.6×, P3=3.8×). Windowed SOTA (LSTM-AE / USAD / TranAD) concentrate attribution on P1 features regardless of the actual target process, falling *below* random baseline on P2 and P3. For an operator triaging a flagged window, dense_ae's output is the more actionable.
+
+**Finding 4.2 — attention rollout null.** Weighting per-(t, f) reconstruction error by TranAD's encoder self-attention produces numerically near-identical precision@k to plain reconstruction attribution. With a single-layer encoder and 60-step windows, attention-over-time is nearly uniform, so per-feature attribution is dominated by the feature-axis residual variation, not the time-axis attention. Attention-based XAI isn't automatically the right tool for per-sensor localization in ICS.
+
+**Finding 4.3 — LSTM-AE and USAD produce identical attribution.** To three decimal places. Almost certainly a structural coincidence (shared optimum on small-feature-count windowed autoencoder architectures on HAI). Worth flagging in the thesis; won't rehash here until multi-seed confirms it isn't a seed artifact.
 
 ## Reproducibility checkpoints
 
@@ -45,13 +69,7 @@ Shin et al. 2020 report ~0.37–0.45 eTaPR for LSTM baselines on HAI 20.07. Gap 
 
 ### Phase 2 — HAI TranAD
 Seed 42, GPU (RTX 3050 Ti, 4GB), 30 epochs: pointwise 0.189, PA 0.458, eTaPR 0.276.
-Tuli et al. 2022 report ~0.97 PA-F1 on HAI 20.07. **Gap of ~0.5 PA-F1.** Sources:
-- HAI 21.03 attack set differs from 20.07 (the working assumption).
-- 30k window subsample vs. paper's full data.
-- Single-layer encoder, d_model=64 vs. paper's larger config.
-- Percentile-99 threshold vs. paper's oracle PA-best threshold.
-
-Per CLAUDE.md §6, documented honestly rather than tuned to fit. Note: TranAD still ranks #1 on HAI under PA-F1 in our results (0.458 vs LSTM-AE 0.221), preserving the paper's qualitative ordering even with absolute numbers diverging.
+Tuli et al. 2022 report ~0.97 PA-F1 on HAI 20.07. **Gap of ~0.5 PA-F1.** Documented honestly rather than tuned; TranAD still ranks #1 on HAI under PA-F1 in our results (0.458 vs LSTM-AE 0.221).
 
 ## Phase 2 results — full 6×2 grid (eTaPR, mean over seeds)
 
@@ -66,22 +84,20 @@ Per CLAUDE.md §6, documented honestly rather than tuned to fit. Note: TranAD st
 
 USAD on Morris collapses (test-attack scores ≈ test-normal scores) — likely because the MLP USAD treats Morris's mostly-integer Modbus features as continuous and over-generalises. Real finding for the thesis.
 
-## Immediate next steps
+## Remaining Phase 4 work
 
-1. Run remaining Phase 1 baselines to populate `summary.parquet` fully (6 configs outstanding).
-2. Execute `03_baseline_results.ipynb` and `06_metric_sensitivity.ipynb` on the populated parquet.
-3. Decide compute path for Phase 2 (TranAD is ~2–4 GPU-hrs/run on HAI).
-4. Advisor sign-off on the three-contribution framing (CLAUDE.md §8 open question).
+- Thesis draft (see `thesis/` scaffold): introduction, background, method, results (3 sub-chapters matching contributions), discussion, conclusion.
+- Multi-seed attribution runs (nice-to-have).
+- Defence slides + rehearsal (week 16).
 
 ## Open questions for the user
 
-1. GPU/compute plan before Phase 2 starts.
-2. Advisor approval on contributions and scope.
-3. Continue targeting workshop venues or pivot to longer-form thesis-only?
+1. Advisor sign-off on contributions and scope (CLAUDE.md §8) — not yet confirmed.
+2. Workshop-paper vs. thesis-only writing density for the draft — current outline targets workshop density; expandable.
 
 ## Verification (definition of done)
 
-- `python -m experiments.run` reproduces every number in the thesis from committed YAML configs.
-- `summary.parquet` has one row per (model, dataset_train, dataset_test, metric, seed) tuple, 3+ seeds per cell.
+- `python -m experiments.run` (and `run_transfer` / `run_lopo` / `run_attribution`) reproduces every number in the thesis from committed YAML configs.
+- `summary.parquet` has one row per (model, dataset_train, dataset_test, metric, seed) tuple, 3+ seeds per cell for core baselines.
 - All figures in `results/figures/` are script-generated.
 - Every model class has a smoke test in CI.
