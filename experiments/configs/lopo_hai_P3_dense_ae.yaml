@@ -1,0 +1,24 @@
+name: lopo_hai_P3_dense_ae
+data:
+  held_out: P3
+  val_frac: 0.15
+  seed: 42
+  subsample_train: 150000
+model:
+  name: dense_ae
+  params:
+    hidden: [128, 64, 32, 64, 128]
+train:
+  epochs: 20
+  batch_size: 512
+  learning_rate: 0.001
+  device: cuda
+eval:
+  threshold_method: val_percentile
+  val_percentile: 99.0
+  metrics: [pointwise, point_adjust, etapr]
+seeds: [42]
+notes: |
+  Phase-3 LOPO. Drop P3_* features, train on the remaining
+  processes, test on full HAI test. Per-attack-process F1 in
+  summary columns isolates feature-shift from class-prior shift.

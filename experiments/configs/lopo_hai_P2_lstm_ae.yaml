@@ -1,0 +1,23 @@
+name: lopo_hai_P2_lstm_ae
+data:
+  held_out: P2
+  window: 60
+  stride: 10
+  val_frac: 0.15
+  seed: 42
+  subsample_train: 30000
+model:
+  name: lstm_ae
+  params:
+    hidden_dim: 64
+    latent_dim: 32
+train:
+  epochs: 10
+  batch_size: 256
+  learning_rate: 0.001
+  device: cpu
+eval:
+  threshold_method: val_percentile
+  val_percentile: 99.0
+  metrics: [pointwise, point_adjust, etapr]
+seeds: [42]
