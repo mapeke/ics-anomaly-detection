@@ -149,10 +149,16 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("config", type=Path)
     ap.add_argument("--method", choices=("reconstruction", "attention"), default="reconstruction")
+    ap.add_argument(
+        "--seeds", type=str, default=None,
+        help="Comma-separated seed override (e.g. '7,123'). Overrides the config.",
+    )
     args = ap.parse_args()
 
     run = RunConfig.from_yaml(args.config)
     run._attribution_method = args.method  # type: ignore[attr-defined]
+    if args.seeds:
+        run.seeds = [int(s) for s in args.seeds.split(",") if s.strip()]
     print(f">> {run.name}  (hash={run.hash()})  attribution [{args.method}]")
     print(f"   dataset={run.data.dataset}  model={run.model.name}  seeds={run.seeds}")
 
