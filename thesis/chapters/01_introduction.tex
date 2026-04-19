@@ -1,0 +1,33 @@
+\chapter{Introduction}
+\label{ch:intro}
+
+\section{Motivation}
+
+Industrial control systems (ICS) are the interface between digital policy and physical plant; an undetected intrusion can cause damage that software-only compromises cannot (Stuxnet, Maroochy, Ukraine 2015).  Public ICS datasets --- HAI \cite{shin2020hai}, SWaT \cite{goh2017swat}, WADI \cite{ahmed2017wadi}, Morris \cite{morris2014industrial} --- enable reproducible benchmarking, and a large literature of deep-learning anomaly detectors reports high F1 scores on them.  This thesis takes three questions seriously that the headline numbers skip over:
+
+\begin{enumerate}
+  \item \textbf{Do the rankings survive time-aware evaluation?}  Point-wise F1 treats every timestep as independent.  Point-adjust F1 (PA-F1)~\cite{xu2018unsupervised} inflates scores by granting full credit when any single point inside an attack event is flagged.  eTaPR~\cite{hwang2022etapr} attempts to restore event-level rigour.  Which metric one reports changes which model ``wins.''
+  \item \textbf{Do these detectors generalize across testbeds?}  All cited papers train and test on the same dataset.  An HAI-trained model should, in principle, capture ICS-general structure and transfer to an industrial gas-pipeline testbed --- or the claim of ``anomaly detection'' is overstated.
+  \item \textbf{Can the detector localize?}  A flagged window is actionable only if an operator can see \emph{which sensor} is implicated.  We evaluate per-feature attribution against HAI's per-process attack labels.
+\end{enumerate}
+
+\section{Contributions}
+
+\paragraph{C1 --- Cross-testbed transfer protocol that separates representation from threshold.}  We project HAI (79 features) and Morris (16 features) onto a shared 6-dim type-vector (pressure, pump\_state, setpoint, system\_state, valve\_position, control\_signal) and run transfer under two calibration regimes: source-domain percentile (\code{src-cal}) and target-normal percentile (\code{tgt-cal}).  We show that \code{src-cal} collapses every detector to the predict-all trivial baseline of the \emph{target} class prior --- a known artifact but, to our knowledge, unquantified in the ICS transfer literature.  Under \code{tgt-cal}, windowed SOTA models (LSTM-AE, USAD, TranAD) achieve $0.38$--$0.44$ eTaPR on HAI$\rightarrow$Morris, the first clear classical-vs-SOTA separation in our study.
+
+\paragraph{C2 --- Within-HAI leave-one-process-out (LOPO) experiment isolating feature shift.}  Holding the class prior fixed, we drop one process's features (P1, P2, P3, or P4) and measure per-attacked-process F1.  Dropping P2 (turbine controller, discrete state flags) causes \emph{targeted} blindness to P2-targeting attacks (Dense AE pointwise F1 drops from $0.41$ on P1-attacks to $0.03$ on P2-attacks); dropping P1 (water loop, $82\%$ of test attacks) causes \emph{global} degradation.  This sets a within-testbed ceiling on what sensor-level transfer can achieve, and contextualizes the lower cross-testbed numbers.
+
+\paragraph{C3 --- Process-level attribution evaluation with a detection-vs-localization tradeoff.}  Every model exposes \code{attribute(X)}$\rightarrow$\code{(N, F)}; we evaluate precision@k of the top-k attributed features against HAI's per-process attack labels.  Dense AE --- the weakest Phase-2 detector --- is the only model whose attribution beats random baseline on all three attacked processes (lift $1.4\times$, $2.7\times$, $3.7\times$ at p@5, averaged over 3 seeds).  The windowed SOTA models concentrate attribution on P1 features regardless of target, and attention-weighted rollout for TranAD produces numerically identical numbers to plain reconstruction attribution --- a null finding that questions the usefulness of attention-XAI for per-sensor ICS localization.
+
+\section{Structure}
+
+Chapter~\ref{ch:background} surveys datasets, detectors, and metrics used in the study.  Chapter~\ref{ch:method} describes the implementation: unified \code{AnomalyDetector} interface, scaler-leak guards, schema-align projection, LOPO helpers, attribution evaluation.  Chapter~\ref{ch:results-detection} presents the same-dataset detection results (contribution~C2's metric component).  Chapter~\ref{ch:results-transfer} is the cross-testbed and LOPO study (C1 and C2).  Chapter~\ref{ch:results-attribution} is the attribution study (C3).  Chapter~\ref{ch:discussion} discusses reviewer-anticipated objections and limitations.  Chapter~\ref{ch:conclusion} concludes.
+
+\section{Scope and non-goals}
+
+\begin{itemize}
+  \item We do not propose a new detector architecture.  The argument is empirical: existing detectors evaluated under a protocol that makes their brittleness visible.
+  \item We do not use HAI 22.04 or 23.05 despite their larger attack sets.  HAI 21.03 was already available via git-standard clone and has per-process attack tags sufficient for C3.  HAI 22.04 is listed as follow-up.
+  \item We do not evaluate against SWaT or WADI.  Those are single-testbed benchmarks like the ones we already use; adding them does not change the argument of C1.
+  \item Defensive deployment and real-time performance are out of scope.  Every reported number is from offline batched evaluation.
+\end{itemize}

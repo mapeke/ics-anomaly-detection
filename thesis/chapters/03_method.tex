@@ -1,0 +1,94 @@
+\chapter{Method}
+\label{ch:method}
+
+This chapter describes the implementation that produces every number in the thesis.  All code lives in \file{src/} and \file{experiments/}; YAML configs in \file{experiments/configs/} are the canonical record of every run.
+
+\section{Unified detector interface}
+
+\file{src/models/base.py} defines an abstract \code{AnomalyDetector} with three methods:
+\begin{itemize}
+  \item \code{fit(X\_train, X\_val)} --- trained on normal data only.
+  \item \code{score(X)}$\rightarrow$\code{(N,)} --- per-sample anomaly score, higher $=$ more anomalous.
+  \item \code{attribute(X)}$\rightarrow$\code{(N, F)} --- per-feature contribution; default raises, overridden by AE family and TranAD.
+\end{itemize}
+
+All six detectors implement this interface.  The runner (\file{experiments/run.py}) treats them uniformly, so cross-dataset study, LOPO, and attribution use the same code path as same-dataset detection.
+
+\section{Data loaders (\file{src/data\_loader.py})}
+
+Both loaders return a \code{DatasetBundle} with \code{features}, \code{labels}, \code{attack\_ids}, \code{split}, \code{name}, \code{timestamps}, and \code{metadata}.
+
+\paragraph{HAI 21.03.}  Consolidates per-process \code{attack\_P\{n\}} flags into a single \code{label} and keeps the first-fired flag as the per-row \code{attack\_id}.  Train/val split is random over the normal \code{train*.csv.gz} files; test is the full attack-mixed set.
+
+\paragraph{Morris gas-pipeline.}  ARFF parser with a \code{pressure measurement} sentinel fix --- values near \code{float32}-max ($\sim 3.4\!\times\!10^{38}$) are replaced with 0 because MinMax scaling and the schema-align mean were otherwise dominated by them.
+
+\paragraph{Leak assertion.}  \code{DatasetBundle.assert\_no\_attack\_in\_train\_val} runs before any downstream step.  Attack rows in train/val are the most common source of inflated published numbers; we fail loudly.
+
+\section{Preprocessing (\file{src/preprocessing.py})}
+
+\begin{itemize}
+  \item \code{scale\_bundle(bundle)}$\rightarrow$\code{ScaledArrays} fits \code{MinMaxScaler} on \textbf{train only}, transforms all splits.  Assertion triggers before fit.
+  \item \code{make\_windows(X, window, stride)} produces $(N, W, F)$ sliding windows for windowed models.
+  \item \code{window\_labels(y, window, stride)} tags a window as 1 iff any frame inside is anomalous.
+  \item \code{percentile\_threshold(val\_scores, 99.0)} picks the operating point from validation scores (never from test).
+\end{itemize}
+
+\section{Evaluation (\file{src/evaluation/})}
+
+\begin{itemize}
+  \item \file{pointwise.py} --- precision, recall, F1, ROC-AUC, PR-AUC.
+  \item \file{point\_adjust.py} --- Xu-2018 PA-F1.
+  \item \file{etapr.py} --- Hwang-2022 event-weighted precision/recall, ported from the reference implementation and verified against their published numbers on a known model.
+\end{itemize}
+
+All three return a tiny metric class with an \code{as\_dict()} serializer; the runner concatenates one row per metric into \file{results/metrics/summary.parquet}.
+
+\section{Cross-testbed transfer (\file{src/transfer/schema\_align.py})}
+
+The method is:
+\begin{enumerate}
+  \item Hand-tag every HAI and Morris feature with a canonical type (\code{pressure}, \code{pump\_state}, \code{setpoint}, \code{system\_state}, \code{valve\_position}, \code{control\_signal}; plus \code{unknown}/\code{comm\_metadata} which are excluded).  Tags live in \file{data/feature\_types.yaml}.
+  \item For each dataset, aggregate same-typed features into a single type column (default: mean; \code{max} for binary-state types via the \code{aggregations} block).  This produces a 6-column type-vector.
+  \item Project both datasets to the intersection of types.  Train on source type-vector; score on target type-vector.
+\end{enumerate}
+
+Two calibration regimes are implemented in \file{experiments/run\_transfer.py}:
+\begin{itemize}
+  \item \code{val\_percentile} --- threshold from 99th percentile of \emph{source} validation scores.
+  \item \code{target\_val\_percentile} --- threshold from 99th percentile of \emph{target}-normal validation scores.  Decouples representation transfer from operating-point transfer.
+\end{itemize}
+
+\section{Within-HAI LOPO (\file{src/transfer/lopo.py})}
+
+\code{drop\_process\_features(bundle, "P2")} returns a new bundle with all \code{P2\_*} columns removed.  \code{per\_attack\_process\_f1(y\_true, y\_pred, attack\_ids)} computes F1 restricted to each process's attack subset (union with normal rows).  \file{experiments/run\_lopo.py} runs the full pipeline with a chosen process held out and emits \code{f1\_attack\_P\{1..4\}} columns in \file{summary.parquet}.
+
+\section{Attribution evaluation (\file{src/attribution/evaluation.py})}
+
+\begin{itemize}
+  \item \code{feature\_to\_process(feature\_names)} maps HAI feature names to their \code{P\{n\}} prefix.
+  \item \code{process\_precision\_at\_k(scores\_F, feature\_processes, attacked\_process, k)} --- fraction of top-k features that belong to the attacked process.
+  \item \code{precision\_at\_k\_by\_attack} aggregates across a batch of attack windows, keyed by attacked process.
+\end{itemize}
+
+The random baseline for precision@k equals the share of features in the attacked process; we report it alongside the model numbers so lift is visible at a glance.
+
+\subsection{TranAD attention rollout}
+\label{sec:tranad-attn}
+
+\code{TranADModel.attribute\_attention(X)} hooks the encoder's self-attention, averages over heads and over output positions to get a per-input-timestep weight, and weights the per-$(t,f)$ squared reconstruction error by that weight.  Single-layer rollout degenerates to the attention matrix.  This is a literal reading of ``attention rollout as attribution'' for the TranAD architecture.
+
+\section{Experiment infrastructure}
+
+Four drivers, all config-YAML-driven:
+\begin{itemize}
+  \item \file{experiments/run.py} --- same-dataset detection.
+  \item \file{experiments/run\_transfer.py} --- cross-testbed transfer under both calibration regimes.
+  \item \file{experiments/run\_lopo.py} --- within-HAI leave-one-process-out.
+  \item \file{experiments/run\_attribution.py} --- per-feature attribution with \code{--method \{reconstruction,attention\}} flag.
+\end{itemize}
+
+Results land in \file{results/metrics/summary.parquet} (detection) and \file{attribution.parquet} (attribution).  Seeds are set via \code{src.utils.set\_seed} at the top of every runner; config hashes are written into every result row so a saved number can be traced back to its exact config.
+
+\section{Tests}
+
+Mandatory for \file{evaluation/} and \file{data\_loader.py}; smoke coverage for everything else (CLAUDE.md policy).  Current suites: \file{test\_data\_loader.py}, \file{test\_preprocessing.py}, \file{test\_evaluation.py}, \file{test\_transfer.py}, \file{test\_attribution.py}, \file{test\_models\_smoke.py}.

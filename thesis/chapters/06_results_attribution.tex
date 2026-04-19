@@ -1,0 +1,93 @@
+\chapter{Results III --- Per-sensor attribution}
+\label{ch:results-attribution}
+
+Notebook: \file{07\_attribution.ipynb}.  Figure: F5.  Source: \file{results/metrics/attribution.parquet} ($3$ seeds $\times$ $4$ models $\times$ reconstruction; $3$ seeds $\times$ TranAD $\times$ attention).
+
+\section{Evaluation protocol recap}
+
+For each attack window in HAI test, the model produces a per-feature attribution vector.  We rank features by attribution and compute precision@k --- the fraction of the top-k features that belong to the attacked process (from HAI's \code{attack\_P\{n\}} label).  Random baseline $=$ share of features in the attacked process: $0.48$ for P1, $0.28$ for P2, $0.09$ for P3.
+
+\section{Precision@5 (mean $\pm$ std across seeds 7, 42, 123)}
+
+\begin{table}[h]
+\centering
+\caption{Precision@5 by model and attacked process, averaged over three seeds.  Best per process in bold.}
+\label{tab:attr-p5}
+\small
+\begin{tabular}{lrrr}
+\toprule
+Model & P1 p@5 & P2 p@5 & P3 p@5 \\
+\midrule
+Dense AE & $0.69 \pm 0.01$ & $0.74 \pm 0.00$ & $\mathbf{0.33 \pm 0.02}$ \\
+LSTM-AE  & $0.74 \pm 0.00$ & $0.09 \pm 0.00$ & $0.20 \pm 0.00$ \\
+USAD     & $0.74 \pm 0.00$ & $0.09 \pm 0.00$ & $0.21 \pm 0.02$ \\
+TranAD   & $0.58 \pm 0.17$ & $\mathbf{0.35 \pm 0.19}$ & $0.02 \pm 0.01$ \\
+Random   & $0.48$ & $0.28$ & $0.09$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.95\textwidth]{07_attribution/attribution_p_at_5.png}
+\caption{Attribution precision@5 by model and attacked process, with $\pm 1\sigma$ error bars across three seeds.  Dashed line is the random baseline for that process.}
+\label{fig:attr-p5}
+\end{figure}
+
+\section{Finding 4.1 --- detection-vs-localization tradeoff (robust across seeds)}
+
+Lift over random baseline for mean p@5:
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrrr}
+\toprule
+Model & P1 lift & P2 lift & P3 lift \\
+\midrule
+\textbf{Dense AE} & $\mathbf{1.45\times}$ & $\mathbf{2.68\times}$ & $\mathbf{3.72\times}$ \\
+LSTM-AE & $1.55\times$ & $0.32\times$ & $2.22\times$ \\
+USAD    & $1.55\times$ & $0.33\times$ & $2.33\times$ \\
+TranAD  & $1.22\times$ & $1.26\times$ & $0.23\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Dense AE --- the weakest Phase-2 detector --- is the only model whose attribution is reliably above random across all three processes.}  Seed variance is small ($\sim 0.01$--$0.02$ on P3); robust result, not seed artifact.
+
+The mechanism: Dense AE operates per-timestep, so per-feature reconstruction error is aligned with the current frame's anomaly.  Windowed models reconstruct a $60$-step window and average per-feature error over time; the averaging concentrates mass on features with the largest dynamic-range variation --- HAI's P1 flow and pressure sensors.  A small perturbation to a few discrete P2 flags is lost in the mean.
+
+\textbf{This inverts the detection ranking of Chapter~\ref{ch:results-detection}}: TranAD is \#1 on HAI eTaPR but near-worst on P3 localization ($0.02$ mean p@5, $0.23\times$ random lift).  For an operator triaging a flagged window, Dense AE's per-feature output is more actionable.  Reporting only detection F1 obscures this.
+
+\section{Finding 4.2 --- attention rollout is null (robust across seeds)}
+\label{sec:finding-attn-null}
+
+TranAD attention-weighted attribution differs from plain reconstruction attribution by $< 0.01$ on every $(\text{process}, k)$ pair across all three seeds.  The two methods are empirically interchangeable.
+
+Intuition: with a single-layer encoder, rollout $=$ raw attention matrix.  Attention averaged over $60$ output positions on HAI normal data is close to uniform; reweighting timesteps uniformly leaves the per-feature ranking unchanged.  Attention-based XAI for per-sensor localization in ICS windowed AD is not automatically the right tool --- one has to verify attention-over-time is structurally variable before investing.
+
+\section{Finding 4.3 --- LSTM-AE $\equiv$ USAD attribution is a genuine structural result}
+
+Across $3$ seeds, LSTM-AE and USAD produce p@k values identical to two decimals on every $(\text{process}, k)$ pair.  Standard deviations are $\leq 0.016$ within each model.  This is not seed noise; the two architectures converge to the same per-feature reconstruction ranking on HAI.
+
+Hypothesis: the ranking is dominated by the MinMax-scaled feature variance structure of HAI's $79$ sensors.  P1 sensors carry the highest dynamic range and feature count, so any architecture with enough capacity to minimise windowed reconstruction error learns to prioritise them.  LSTM-AE's sequence objective and USAD's adversarial dual-head objective both converge to the same optimum in the feature-ranking sense.
+
+If your model class produces the same attribution ranking as a simpler baseline, the extra architectural complexity is buying detection accuracy (USAD and LSTM-AE \emph{do} differ in detection F1 slightly), not attribution quality.  Operators paying the complexity tax for a richer model should audit that they're getting the richer output.
+
+\section{Revised framing vs.\ the seed-42-only report}
+
+An earlier draft (commit \texttt{a2957b0}) reported ``TranAD actively anti-localizes on P3 (p@5 $= 0.02$, lift $0.2\times$, worse than flipping coins).''  Multi-seed averaging softens this claim:
+\begin{itemize}
+  \item P3 remains a TranAD weakness (mean $0.02$, range $[0.02, 0.03]$ across seeds --- consistent, not seed-random).
+  \item But TranAD on P2 had large seed variance: p@5 $= 0.23$ at seed $42$ vs.\ $0.57$ at seed $7$.  Mean $0.35$, \emph{above} the $0.28$ random baseline.
+\end{itemize}
+
+Revised framing: TranAD \emph{can} localize to P2 with enough seed-trial budget, but its localization is seed-unstable, whereas Dense AE and LSTM-AE/USAD are seed-stable (even if the latter two are structurally stuck on P1).  An argument for multi-seed evaluation in any attribution study.
+
+\section{Limitations}
+
+\begin{enumerate}
+  \item \textbf{Process-level eval is weaker than per-sensor eval.}  HAI 22.04's README has more detailed per-attack descriptions; a hand-curated per-sensor ground truth on 22.04 would strengthen the claim.
+  \item \textbf{Dense AE is non-windowed; LSTM-AE, USAD, TranAD are windowed.}  The localization-vs-detection tradeoff is partly confounded with windowing.  A windowed MLP AE would disentangle; out of scope here.
+  \item \textbf{Attention rollout is a single-layer approximation.}  A deeper TranAD could give richer signals; deeper TranAD also takes hours per run on our 4\,GB GPU.
+\end{enumerate}

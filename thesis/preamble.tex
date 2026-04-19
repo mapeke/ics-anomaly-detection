@@ -1,0 +1,39 @@
+% Preamble shared by main.tex (thesis) and any condensed paper.tex.
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[english]{babel}
+\usepackage{microtype}
+
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+
+\usepackage{graphicx}
+\graphicspath{{../results/figures/}}
+
+\usepackage{booktabs}     % \toprule, \midrule, \bottomrule
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{multirow}
+
+\usepackage{siunitx}
+\sisetup{detect-weight, round-mode=places, round-precision=3}
+
+\usepackage{amsmath, amssymb}
+\usepackage{xcolor}
+\usepackage{listings}
+\lstset{basicstyle=\ttfamily\small, breaklines=true, frame=single}
+
+\usepackage{hyperref}
+\hypersetup{colorlinks=true, linkcolor=black, citecolor=black, urlcolor=blue}
+
+\usepackage[backend=biber, style=numeric-comp, sorting=none]{biblatex}
+
+\usepackage{csquotes}
+
+% Shorthand for inline code / file paths.
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\file}[1]{\texttt{#1}}
+
+% Results-table helper: center-align column.
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}

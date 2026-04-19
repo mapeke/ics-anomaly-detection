@@ -1,0 +1,34 @@
+% Diploma thesis master document.
+% Build: pdflatex main && biber main && pdflatex main && pdflatex main
+\documentclass[11pt,a4paper,openany]{report}
+
+\input{preamble}
+
+\title{Cross-Testbed, Time-Aware, Attributable Anomaly Detection in Industrial Control Systems}
+\author{Daniyal}
+\date{2026}
+
+\addbibresource{references.bib}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Current ICS anomaly detectors report high F1 on the dataset they were trained on, but their rankings change under time-aware evaluation metrics and they fail to generalize across testbeds --- both effects obscured by the headline numbers that dominate the literature.  This thesis benchmarks six detectors (Isolation Forest, One-Class SVM, Dense AE, LSTM-AE, USAD, TranAD) on HAI 21.03 and the Morris gas-pipeline dataset under three time-aware metrics, runs a cross-testbed transfer study that separates representation transfer from threshold transfer, and evaluates per-sensor attribution at the process level.  Three findings drive the thesis:  (1)~source-calibrated cross-testbed transfer collapses every detector to the predict-all trivial baseline of the target's class prior, while target-calibrated transfer reveals a meaningful classical-vs-SOTA split invisible under the common protocol;  (2)~within-HAI leave-one-process-out isolates feature-distribution shift from class-prior shift, showing targeted blindness when process-specific sensors are removed;  (3)~Dense AE --- the weakest detector --- is the only model whose per-feature attribution is reliably above random on all three attacked HAI processes, establishing a detection-vs-localization tradeoff.  Every number is reproducible from committed YAML configs.
+\end{abstract}
+
+\tableofcontents
+
+\include{chapters/01_introduction}
+\include{chapters/02_background}
+\include{chapters/03_method}
+\include{chapters/04_results_detection}
+\include{chapters/05_results_transfer}
+\include{chapters/06_results_attribution}
+\include{chapters/07_discussion}
+\include{chapters/08_conclusion}
+
+\printbibliography
+
+\end{document}

@@ -1,0 +1,92 @@
+\chapter{Background}
+\label{ch:background}
+
+\section{Industrial control systems and public datasets}
+
+ICS mediate between digital policy and physical plant: programmable logic controllers (PLCs), distributed control systems (DCSs), remote telemetry units (RTUs), and the Modbus, OPC-UA, and DNP3 protocols that link them.  An intrusion in this regime differs from a conventional IT compromise in that the consequence is physical: opened valves, mis-commanded pumps, transformer failure.  Stuxnet (Iran, 2010) \cite{langner2013stuxnet}, the Maroochy Water breach (Australia, 2000), and the two Ukraine grid incidents (2015, 2016) \cite{ukraine2016analysis} are the commonly-cited precedents for why ICS security is a first-class research area.
+
+Public ICS datasets supply the benchmarks under which anomaly-detection work is evaluated.  The four most commonly used in the recent deep-learning literature are summarized in Table~\ref{tab:datasets}.
+
+\begin{table}[h]
+\centering
+\caption{ICS anomaly-detection datasets commonly used in the literature.}
+\label{tab:datasets}
+\small
+\begin{tabular}{lp{3cm}lll}
+\toprule
+Dataset & Testbed & Features & Attack labelling & Common use \\
+\midrule
+HAI \cite{shin2020hai} & HIL boiler + turbine + water + sim & 59--86 @ 1\,Hz & per-process flags & recent deep-AD papers \\
+SWaT \cite{goh2017swat} & Water treatment & 51 @ 1\,Hz & binary & pre-2022 benchmarks \\
+WADI \cite{ahmed2017wadi} & Water distribution & 123 @ 1\,Hz & binary & companion to SWaT \\
+Morris \cite{morris2014industrial} & Gas pipeline over Modbus RTU & 16 / frame & binary + attack type & classical ICS AD / IDS \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+We evaluate on HAI 21.03 and Morris.  Rationale:
+
+\begin{enumerate}
+  \item \textbf{Complementary physical regimes.}  HAI is continuous-sensor data from a multi-process HIL rig; Morris is discrete-frame Modbus RTU from a single-process gas-pipeline testbed.  A detector that transfers between them is genuinely ``ICS-general''; one that doesn't is testbed-specific.
+  \item \textbf{Complementary attack labelling.}  HAI's per-process \texttt{attack\_P\{n\}} tagging is the only public ICS dataset with machine-readable per-sub-system attack decomposition; it is what makes the LOPO and attribution studies in Chapters~\ref{ch:results-transfer} and~\ref{ch:results-attribution} possible.
+  \item \textbf{Different class priors.}  HAI test has a $2.4\%$ attack rate; Morris has $\sim 48\%$ ($91\%$ after 60-step windowing).  The pair stresses the threshold-calibration question Chapter~\ref{ch:results-transfer} is built around.
+  \item \textbf{Availability.}  HAI 21.03 is cloneable without Git LFS; HAI 22.04+ require LFS and we were not guaranteed quota.  Morris is a single ARFF file.
+\end{enumerate}
+
+SWaT and WADI are excluded not because they lack value, but because adding more single-testbed datasets does not change Contribution~1 (cross-testbed generalization).  An extension to SWaT--HAI transfer is future work (\S\ref{sec:future}).
+
+\section{Anomaly detectors evaluated}
+
+Six detectors span the classical-to-SOTA range.  For each we fit the PyTorch or scikit-learn implementation on normal-only training data, score test windows, and threshold on a validation percentile (Chapter~\ref{ch:method}).
+
+\paragraph{Isolation Forest \cite{liu2008isolation}.}  Random-forest density proxy: anomalies reach leaf nodes faster than normal points.  Strong near-parameter-free baseline for tabular data; we include it under the same-dataset detection grid and the cross-testbed schema-align projection.
+
+\paragraph{One-Class SVM \cite{scholkopf2001estimating}.}  Kernel density baseline still commonly cited in ICS AD.  The RBF kernel's distance sensitivity makes it a counterpoint to Isolation Forest's partitioning view.
+
+\paragraph{Dense autoencoder.}  The simplest deep baseline: a fully-connected autoencoder trained to reconstruct per-timestep feature vectors.  Anomaly score $=$ per-sample MSE; per-feature reconstruction MSE is the attribution path, and it ends up being the most useful localization signal in the study (Chapter~\ref{ch:results-attribution}).
+
+\paragraph{LSTM autoencoder \cite{malhotra2016lstm}.}  Sequence-reconstruction baseline using an LSTM encoder--decoder over 60-step windows.  Widely reported on HAI in the early ICS-AD literature.
+
+\paragraph{USAD \cite{audibert2020usad}.}  Two MLP-based autoencoders share an encoder and are trained adversarially: decoder~1 minimises reconstruction, decoder~2 maximises it, and the inference score combines both.
+
+\paragraph{TranAD \cite{tuli2022tranad}.}  Transformer encoder shared between two decoders; Phase~2 of the two-phase scheme passes a per-element reconstruction residual back to the encoder as a focus signal.  The paper's reported HAI 20.07 numbers are the current SOTA cite-target in the literature.  Our implementation diverges from the reference in documented ways (see \file{src/models/tranad.py} header and \S\ref{sec:tranad-repro}); our HAI 21.03 numbers are $\sim 0.5$ PA-F1 below the paper's 20.07 numbers, which we discuss honestly rather than tuning to fit.
+
+The three classical detectors (IF, OC-SVM, Dense AE) operate per-timestep; LSTM-AE, USAD, TranAD operate on 60-step sliding windows.  The windowing difference matters for Chapter~\ref{ch:results-transfer} (windowed models are the ones that transfer under target calibration) and Chapter~\ref{ch:results-attribution} (windowed models fail to localize).
+
+\section{Time-aware evaluation metrics}
+
+The three metrics disagree systematically.
+
+\paragraph{Point-wise P/R/F1.}  sklearn default.  Treats every timestep as independent; under-reports detection when an attack consists of many consecutive abnormal points and the detector flags only a subset, and over-reports when it is lucky with isolated hits.
+
+\paragraph{Point-adjust F1 (PA-F1) \cite{xu2018unsupervised}.}  Addresses the ``many consecutive points'' problem by granting credit for the whole attack segment if any single point inside it is flagged.  Used in most recent deep ICS AD papers including TranAD.  Kim et al.~\cite{kim2022towards} (AAAI 2022) show that PA-F1 is inflated under reasonable conditions: a random predictor with $1\%$ positive rate achieves PA-F1 $> 0.5$ on typical event distributions.  The paper frames this as a methodological critique rather than a proposal for a replacement.
+
+\paragraph{eTaPR \cite{hwang2022etapr}.}  Event-weighted precision and recall with a partial-credit rule: a flagged segment that overlaps an attack event gets credit proportional to the overlap's fraction of the event.  Reduces PA-F1 inflation while still rewarding ``flag at least some of the event.''  We port the reference implementation and verify against the original authors' published numbers on a known model as a sanity check (see \file{src/evaluation/etapr.py}).
+
+Thesis policy: every number is reported under all three metrics.  Ranking changes across metrics are findings (Chapter~\ref{ch:results-detection}, \S\ref{sec:rank-change}), not noise.
+
+\section{Cross-dataset transfer in time-series anomaly detection}
+
+Most published ICS AD papers evaluate on a single testbed.  The narrower ``transfer within a testbed but across time'' setting --- train on one HAI split, test on another --- is common; cross-testbed transfer is rare.
+
+The obvious obstacle is \emph{schema mismatch}: HAI's 79 sensors have no overlap with Morris's 16 Modbus fields at the raw-name level.  The literature offers three broad approaches:
+
+\begin{enumerate}
+  \item \textbf{Per-variable type tagging} --- hand-map each raw feature to a canonical type (pressure, flow, valve, etc.) and aggregate same-typed features into a shared vector.  Used in Kravchik \& Shabtai~\cite{kravchik2018detecting} informally.
+  \item \textbf{Learned projection} --- train an encoder (contrastive or autoencoder-style) to project both datasets into a shared latent space using only normal windows.  Flexible; requires a second training phase and adds methodological defense burden.
+  \item \textbf{Punt and do within-testbed LOPO} --- leave one process out within the source testbed.  Weakest, but clean.
+\end{enumerate}
+
+We take option~1 as the primary study and option~3 as a within-testbed control.  Option~2 remains listed in \S\ref{sec:future} as follow-up.  Our contribution over prior option-1 work is the calibration-regime split (\code{src-cal} vs.\ \code{tgt-cal}, Chapter~\ref{ch:results-transfer}), which isolates representation transfer from threshold transfer.
+
+\section{Attribution and per-sensor localization}
+
+Attribution for anomaly detection answers \emph{which sensor} the detector is reacting to at a flagged timestep.
+
+\paragraph{Per-feature reconstruction error.}  For autoencoder-family models, the per-feature squared reconstruction error is a natural attribution: the feature whose value deviates most from the reconstruction contributes most to the flag.  Widely used informally; we evaluate it formally in Chapter~\ref{ch:results-attribution}.
+
+\paragraph{Attention rollout \cite{abnar2020quantifying}.}  For transformer-based detectors, attention weights at each layer are interpreted as ``how much the output attends to the input,'' and rollout aggregates across layers.  In NLP the method is well-established for token-level attribution; its transfer to time-series AD has been less tested.  We adapt rollout to a single-layer TranAD encoder (\S\ref{sec:tranad-attn}) and report a null finding (Chapter~\ref{ch:results-attribution}, \S\ref{sec:finding-attn-null}).
+
+\paragraph{Gradient-based methods.}  SHAP \cite{lundberg2017unified}, integrated gradients \cite{sundararajan2017axiomatic}, and saliency maps are alternatives but compute-heavy for 60-step windows; we note them and defer.
+
+\paragraph{Evaluation.}  HAI publishes per-attack tags at the process level (\texttt{attack\_P1}--\texttt{P4}) but not per-sensor target lists in machine-readable form.  We therefore evaluate at the process level: fraction of top-k attributed features whose column name is prefixed by the attacked process.  Random baseline equals the share of features in that process.  A sensor-level eval on HAI 22.04 (whose README gives more detailed per-attack descriptions) is listed as future work.
