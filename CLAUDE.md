@@ -163,6 +163,7 @@ Goal: attribution working, thesis drafted, defense ready.
 
 - **Start every session by running `git status` and reading this file.** Do not assume stale context.
 - **Small commits, clear messages.** One feature per commit. Conventional-commits style.
+- **Push at phase boundaries without asking.** Commit eagerly as work completes; push the branch to `origin/main` whenever a phase milestone lands (phases are defined in §6). Mid-phase, keep commits local so the remote reflects coherent units of work.
 - **Never commit data files, checkpoints, or anything > 10 MB.** Check `.gitignore` before `git add -A`.
 - **Never run an experiment that hasn't been config-ified.** If the user asks for a quick experiment, write the YAML first, then run it.
 - **Tests before notebook results.** If a notebook produces a number the thesis will cite, there must be a test that pins the underlying function.
