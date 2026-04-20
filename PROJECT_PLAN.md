@@ -92,7 +92,6 @@ USAD on Morris collapses (test-attack scores ≈ test-normal scores) — likely 
 
 ## Open questions for the user
 
-1. Advisor sign-off on contributions and scope (CLAUDE.md §8) — not yet confirmed.
 2. Workshop-paper vs. thesis-only writing density for the draft — current outline targets workshop density; expandable.
 
 ## Verification (definition of done)
