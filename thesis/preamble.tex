@@ -1,17 +1,20 @@
-% Preamble shared by main.tex (thesis) and any condensed paper.tex.
-\usepackage[utf8]{inputenc}
-\usepackage[T1]{fontenc}
-\usepackage{lmodern}
-\usepackage[english]{babel}
-\usepackage{microtype}
+% Preamble for XeLaTeX build (Times New Roman 14pt, English/Russian/Kazakh).
+% Build chain: see build.sh.
+
+\usepackage{fontspec}
+\setmainfont{Times New Roman}
+
+\usepackage{polyglossia}
+\setmainlanguage{english}
+\setotherlanguages{russian,kazakh}
 
 \usepackage{geometry}
-\geometry{margin=2.5cm}
+\geometry{left=30mm, right=20mm, top=20mm, bottom=20mm}
 
 \usepackage{graphicx}
 \graphicspath{{../results/figures/}}
 
-\usepackage{booktabs}     % \toprule, \midrule, \bottomrule
+\usepackage{booktabs}
 \usepackage{tabularx}
 \usepackage{array}
 \usepackage{multirow}

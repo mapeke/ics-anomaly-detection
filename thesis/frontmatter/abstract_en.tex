@@ -1,0 +1,16 @@
+\thispagestyle{empty}
+\begin{center}
+{\Large \textbf{ABSTRACT}\par}
+\end{center}
+\vspace{0.5cm}
+
+Current ICS anomaly detectors report high F1 on the dataset they were trained on, but their rankings change under time-aware evaluation metrics and they fail to generalize across testbeds --- both effects obscured by the headline numbers that dominate the literature.  This thesis benchmarks six detectors (Isolation Forest, One-Class SVM, Dense Autoencoder, LSTM Autoencoder, USAD, TranAD) on HAI 21.03 and the Morris gas-pipeline dataset under three time-aware metrics, runs a cross-testbed transfer study that separates representation transfer from threshold transfer, and evaluates per-sensor attribution at the process level.
+
+Three findings drive the thesis: (1)~source-calibrated cross-testbed transfer collapses every detector to the predict-all trivial baseline of the target's class prior, while target-calibrated transfer reveals a meaningful classical-versus-SOTA split invisible under the common protocol; (2)~within-HAI leave-one-process-out isolates feature-distribution shift from class-prior shift, showing targeted detection blindness when process-specific sensors are removed; (3)~the Dense Autoencoder --- the weakest detector by F1 --- is the only model whose per-feature attribution is reliably above random on all three attacked HAI processes, establishing a detection-versus-localization tradeoff.
+
+The thesis contributes a reproducible benchmarking protocol, an open-source implementation under a unified detector interface, and a methodological recommendation for the ICS anomaly-detection community: report the full grid of metrics, calibration regimes, and attribution outcomes rather than a single headline F1.  Every number in the document is reproducible from committed YAML configurations.
+
+\vspace{0.5cm}
+\noindent\textbf{Keywords:} industrial control systems; anomaly detection; cyber-physical security; cross-domain transfer; time-aware metrics; attribution; HAI; Morris.
+
+\newpage
