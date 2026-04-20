@@ -92,7 +92,7 @@ USAD on Morris collapses (test-attack scores ≈ test-normal scores) — likely 
 
 ## Open questions for the user
 
-2. Workshop-paper vs. thesis-only writing density for the draft — current outline targets workshop density; expandable.
+1. Workshop-paper vs. thesis-only writing density for the draft — current outline targets workshop density; expandable.
 
 ## Verification (definition of done)
 
