@@ -1,15 +1,19 @@
-% Preamble for XeLaTeX build (Times New Roman 14pt, English/Russian/Kazakh).
+% Preamble for XeLaTeX build (Latin Modern, English/Russian/Kazakh).
 % Build chain: see build.sh.
 
 \usepackage{fontspec}
-\setmainfont{Times New Roman}
+% CMU Serif = Computer Modern Unicode Serif: visually identical to Latin Modern,
+% with full Cyrillic coverage including Kazakh extended letters.
+\setmainfont{CMU Serif}
+\setsansfont{CMU Sans Serif}
+\setmonofont{CMU Typewriter Text}
 
 \usepackage{polyglossia}
 \setmainlanguage{english}
 \setotherlanguages{russian,kazakh}
 
 \usepackage{geometry}
-\geometry{left=30mm, right=20mm, top=20mm, bottom=20mm}
+\geometry{margin=2.5cm}
 
 \usepackage{graphicx}
 \graphicspath{{../results/figures/}}
@@ -33,6 +37,23 @@
 \usepackage[backend=biber, style=numeric-comp, sorting=none]{biblatex}
 
 \usepackage{csquotes}
+
+% --- Heading sizes capped: chapter 18pt, section 16pt, subsection 14pt ---
+\usepackage{titlesec}
+\titleformat{\chapter}[display]
+  {\normalfont\bfseries\fontsize{18pt}{22pt}\selectfont}
+  {\chaptertitlename\ \thechapter}{14pt}{\fontsize{18pt}{22pt}\selectfont}
+\titlespacing*{\chapter}{0pt}{20pt}{14pt}
+
+\titleformat{\section}
+  {\normalfont\bfseries\fontsize{16pt}{20pt}\selectfont}
+  {\thesection}{1em}{}
+\titleformat{\subsection}
+  {\normalfont\bfseries\fontsize{14pt}{18pt}\selectfont}
+  {\thesubsection}{1em}{}
+\titleformat{\subsubsection}
+  {\normalfont\bfseries\normalsize}
+  {\thesubsubsection}{1em}{}
 
 % Shorthand for inline code / file paths.
 \newcommand{\code}[1]{\texttt{#1}}
