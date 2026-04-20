@@ -1,16 +1,21 @@
-% Preamble for XeLaTeX build (Latin Modern, English/Russian/Kazakh).
+% Preamble for XeLaTeX build (Times New Roman 14pt, English/Russian/Kazakh).
 % Build chain: see build.sh.
 
 \usepackage{fontspec}
-% CMU Serif = Computer Modern Unicode Serif: visually identical to Latin Modern,
-% with full Cyrillic coverage including Kazakh extended letters.
-\setmainfont{CMU Serif}
-\setsansfont{CMU Sans Serif}
-\setmonofont{CMU Typewriter Text}
+\setmainfont{Times New Roman}
 
 \usepackage{polyglossia}
 \setmainlanguage{english}
 \setotherlanguages{russian,kazakh}
+
+% --- Justification quality ---
+% microtype: character protrusion; reduces ragged-looking justification with TNR.
+\usepackage[protrusion=true,final]{microtype}
+% Allow more inter-word stretch as a last resort so paragraphs justify cleanly
+% instead of leaving large rivers of whitespace.
+\emergencystretch=3em
+\hyphenpenalty=50
+\tolerance=400
 
 \usepackage{geometry}
 \geometry{margin=2.5cm}
