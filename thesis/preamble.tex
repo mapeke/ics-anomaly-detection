@@ -9,16 +9,16 @@
 \setotherlanguages{russian,kazakh}
 
 % --- Justification quality ---
-% microtype: character protrusion; reduces ragged-looking justification with TNR.
+% microtype: character protrusion (XeLaTeX limitation).  Default tolerance
+% (200) keeps spacing tight; small emergencystretch absorbs the few hard
+% lines that would otherwise overflow into the right margin.
 \usepackage[protrusion=true,final]{microtype}
-% Allow more inter-word stretch as a last resort so paragraphs justify cleanly
-% instead of leaving large rivers of whitespace.
-\emergencystretch=3em
-\hyphenpenalty=50
-\tolerance=400
+\emergencystretch=1em
 
 \usepackage{geometry}
-\geometry{margin=2.5cm}
+% 2 cm side margins (vs 2.5 cm) give ~8 more chars per line at TNR 14pt,
+% which lets the justifier place words without large gaps.
+\geometry{left=2cm, right=2cm, top=2cm, bottom=2cm}
 
 \usepackage{graphicx}
 \graphicspath{{../results/figures/}}
@@ -44,21 +44,23 @@
 \usepackage{csquotes}
 
 % --- Heading sizes capped: chapter 18pt, section 16pt, subsection 14pt ---
+% Chapter uses 'hang' so "Chapter N. Title" appears on a single line,
+% bold, left-aligned -- matches Word-style heading look.
 \usepackage{titlesec}
-\titleformat{\chapter}[display]
+\titleformat{\chapter}[hang]
   {\normalfont\bfseries\fontsize{18pt}{22pt}\selectfont}
-  {\chaptertitlename\ \thechapter}{14pt}{\fontsize{18pt}{22pt}\selectfont}
-\titlespacing*{\chapter}{0pt}{20pt}{14pt}
+  {\chaptertitlename\ \thechapter.}{0.5em}{}
+\titlespacing*{\chapter}{0pt}{20pt}{18pt}
 
 \titleformat{\section}
   {\normalfont\bfseries\fontsize{16pt}{20pt}\selectfont}
-  {\thesection}{1em}{}
+  {\thesection}{0.7em}{}
 \titleformat{\subsection}
   {\normalfont\bfseries\fontsize{14pt}{18pt}\selectfont}
-  {\thesubsection}{1em}{}
+  {\thesubsection}{0.7em}{}
 \titleformat{\subsubsection}
   {\normalfont\bfseries\normalsize}
-  {\thesubsubsection}{1em}{}
+  {\thesubsubsection}{0.7em}{}
 
 % Shorthand for inline code / file paths.
 \newcommand{\code}[1]{\texttt{#1}}
