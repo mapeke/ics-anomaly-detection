@@ -1,6 +1,12 @@
 const el = {
   artifact: document.getElementById("artifact"),
   artifactInfo: document.getElementById("artifact-info"),
+  adapter: document.getElementById("adapter"),
+  variantRow: document.getElementById("variant-row"),
+  variant: document.getElementById("variant"),
+  variantInfo: document.getElementById("variant-info"),
+  recalibrate: document.getElementById("recalibrate"),
+  percentile: document.getElementById("percentile"),
   form: document.getElementById("score-form"),
   file: document.getElementById("file"),
   submit: document.getElementById("submit-btn"),
@@ -13,6 +19,7 @@ const el = {
 };
 
 let artifacts = [];
+let variants = [];
 
 function fmt(v, digits = 4) {
   if (v === null || v === undefined || Number.isNaN(v)) return "—";
@@ -53,6 +60,31 @@ async function loadArtifacts() {
   setStatus("");
 }
 
+async function loadVariants() {
+  const res = await fetch("/variants");
+  if (!res.ok) return;
+  const data = await res.json();
+  variants = data.variants || [];
+  el.variant.innerHTML = "";
+  for (const v of variants) {
+    const opt = document.createElement("option");
+    opt.value = v.id;
+    opt.textContent = `${v.id} — ${v.name}`;
+    el.variant.appendChild(opt);
+  }
+  renderVariantInfo();
+}
+
+function renderVariantInfo() {
+  const v = variants.find((x) => x.id === el.variant.value);
+  el.variantInfo.textContent = v ? v.description : "";
+}
+
+function syncAdapterVisibility() {
+  const isGeneric = el.adapter.value === "generic_arff";
+  el.variantRow.classList.toggle("hidden", !isGeneric);
+}
+
 function renderArtifactInfo() {
   const a = artifacts.find((x) => x.id === el.artifact.value);
   if (!a) {
@@ -68,6 +100,8 @@ function renderArtifactInfo() {
 }
 
 el.artifact.addEventListener("change", renderArtifactInfo);
+el.adapter.addEventListener("change", syncAdapterVisibility);
+el.variant.addEventListener("change", renderVariantInfo);
 
 el.form.addEventListener("submit", async (ev) => {
   ev.preventDefault();
@@ -82,6 +116,14 @@ el.form.addEventListener("submit", async (ev) => {
   const fd = new FormData();
   fd.append("artifact_id", el.artifact.value);
   fd.append("file", el.file.files[0]);
+  fd.append("adapter", el.adapter.value);
+  if (el.adapter.value === "generic_arff") {
+    fd.append("variant", el.variant.value);
+  }
+  if (el.recalibrate.checked) {
+    fd.append("recalibrate", "target_val_percentile");
+    fd.append("percentile", el.percentile.value || "99");
+  }
 
   let res;
   try {
@@ -113,10 +155,15 @@ el.form.addEventListener("submit", async (ev) => {
 
 function renderResults(data) {
   el.results.classList.remove("hidden");
+  const thresholdLine = data.recalibrate_mode
+    ? `applied threshold: <code>${fmt(data.threshold, 6)}</code> ` +
+      `(recalibrated via ${data.recalibrate_mode}@p${data.recalibrate_percentile}; ` +
+      `source: <code>${fmt(data.source_threshold, 6)}</code>)`
+    : `applied threshold: <code>${fmt(data.threshold, 6)}</code> (source)`;
   el.summary.innerHTML = `
     <ul class="muted" style="list-style: none; padding: 0; margin: 0;">
       <li>input rows: <code>${data.n_input_rows}</code> · scored: <code>${data.n_scored}</code> ${data.windowed ? "windows" : "rows"} · flagged: <code>${data.n_flagged}</code></li>
-      <li>artifact threshold: <code>${fmt(data.threshold, 6)}</code></li>
+      <li>${thresholdLine}</li>
     </ul>`;
 
   if (!data.metrics) {
@@ -146,4 +193,6 @@ function renderResults(data) {
   el.download.href = data.download_url;
 }
 
+syncAdapterVisibility();
 loadArtifacts();
+loadVariants();

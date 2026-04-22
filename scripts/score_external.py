@@ -24,12 +24,14 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.inference import load_artifact, score_dataframe  # noqa: E402
-from src.inference.adapters import load_morris_gas_file  # noqa: E402
+from src.inference.adapters import (  # noqa: E402
+    get_variant,
+    load_generic_arff_file,
+    load_morris_gas_file,
+)
 from src.utils import set_seed  # noqa: E402
 
-ADAPTERS = {
-    "morris_gas": load_morris_gas_file,
-}
+ADAPTERS = ("morris_gas", "generic_arff")
 
 
 def _format_metric_line(family: str, m: dict) -> str:
@@ -51,9 +53,25 @@ def main() -> None:
     ap.add_argument("--out", type=Path, required=True, help="output parquet file")
     ap.add_argument(
         "--adapter",
-        choices=list(ADAPTERS),
+        choices=ADAPTERS,
         default="morris_gas",
         help="which dataset adapter to use (default: morris_gas)",
+    )
+    ap.add_argument(
+        "--variant",
+        help="variant id for --adapter generic_arff (see data/feature_types_variants/)",
+    )
+    ap.add_argument(
+        "--recalibrate",
+        choices=["target_val_percentile"],
+        default=None,
+        help="recompute the threshold from the uploaded data's normal-only rows",
+    )
+    ap.add_argument(
+        "--percentile",
+        type=float,
+        default=99.0,
+        help="percentile for --recalibrate (default: 99.0)",
     )
     ap.add_argument(
         "--device", default="cpu", help="torch device for deep models (default: cpu)"
@@ -69,11 +87,28 @@ def main() -> None:
         f"threshold={artifact.threshold:.6f} ({artifact.threshold_strategy})"
     )
 
-    adapter = ADAPTERS[args.adapter]
-    result = adapter(args.input, expected_features=artifact.feature_columns)
+    if args.adapter == "morris_gas":
+        result = load_morris_gas_file(args.input, expected_features=artifact.feature_columns)
+    else:  # generic_arff
+        if not args.variant:
+            ap.error("--adapter generic_arff requires --variant <id>")
+        variant = get_variant(args.variant)
+        result = load_generic_arff_file(
+            args.input, variant=variant, expected_features=artifact.feature_columns
+        )
+        print(f"   variant {variant.id}  ({variant.name})")
     print(f"   input {args.input}  rows={len(result.features)}")
 
-    score_result = score_dataframe(artifact, result.features, labels=result.labels)
+    score_result = score_dataframe(
+        artifact, result.features, labels=result.labels,
+        recalibrate=args.recalibrate, percentile=args.percentile,
+    )
+    if score_result.recalibrate_mode:
+        print(
+            f"   threshold {score_result.threshold:.6f} "
+            f"(recalibrated via {score_result.recalibrate_mode}@p{score_result.recalibrate_percentile}; "
+            f"source={score_result.source_threshold:.6f})"
+        )
     print(
         f"   scored {len(score_result.scores)} "
         f"{'windows' if score_result.windowed else 'rows'}  "

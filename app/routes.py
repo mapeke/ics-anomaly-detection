@@ -13,7 +13,13 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from src.inference import load_artifact, score_dataframe
-from src.inference.adapters import SchemaMismatchError, load_morris_gas_file
+from src.inference.adapters import (
+    SchemaMismatchError,
+    get_variant,
+    list_variants,
+    load_generic_arff_file,
+    load_morris_gas_file,
+)
 from src.utils import PROJECT_ROOT
 
 from .schemas import (
@@ -22,6 +28,8 @@ from .schemas import (
     MetricFamily,
     PreviewRow,
     ScoreResponse,
+    VariantInfo,
+    VariantList,
 )
 
 CHECKPOINTS_ROOT = PROJECT_ROOT / "results" / "checkpoints"
@@ -88,11 +96,38 @@ def list_artifacts() -> ArtifactList:
     return ArtifactList(artifacts=_discover_artifacts())
 
 
+@router.get("/variants", response_model=VariantList)
+def variants_endpoint() -> VariantList:
+    return VariantList(
+        variants=[
+            VariantInfo(
+                id=v.id,
+                name=v.name,
+                description=v.description,
+                label_column=v.label_column,
+                label_semantics=v.label_semantics,
+            )
+            for v in list_variants()
+        ]
+    )
+
+
 @router.post("/score", response_model=ScoreResponse)
 async def score(
     artifact_id: str = Form(...),
     file: UploadFile = File(...),
+    adapter: str = Form("morris_gas"),
+    variant: str | None = Form(None),
+    recalibrate: str | None = Form(None),
+    percentile: float = Form(99.0),
 ) -> ScoreResponse:
+    if adapter not in {"morris_gas", "generic_arff"}:
+        raise HTTPException(status_code=400, detail={"error": "unknown_adapter", "detail": adapter})
+    if adapter == "generic_arff" and not variant:
+        raise HTTPException(
+            status_code=400, detail={"error": "missing_variant", "detail": "adapter=generic_arff requires variant"}
+        )
+
     artifact_dir = _resolve_artifact_dir(artifact_id)
 
     suffix = Path(file.filename or "upload.arff").suffix.lower() or ".arff"
@@ -113,9 +148,15 @@ async def score(
     try:
         artifact = load_artifact(artifact_dir)
         try:
-            adapter_result = load_morris_gas_file(
-                tmp_path, expected_features=artifact.feature_columns
-            )
+            if adapter == "morris_gas":
+                adapter_result = load_morris_gas_file(
+                    tmp_path, expected_features=artifact.feature_columns
+                )
+            else:
+                variant_spec = get_variant(variant)
+                adapter_result = load_generic_arff_file(
+                    tmp_path, variant=variant_spec, expected_features=artifact.feature_columns
+                )
         except SchemaMismatchError as e:
             raise HTTPException(
                 status_code=400,
@@ -130,7 +171,13 @@ async def score(
         except ValueError as e:
             raise HTTPException(status_code=400, detail={"error": "unsupported_file", "detail": str(e)}) from e
 
-        result = score_dataframe(artifact, adapter_result.features, labels=adapter_result.labels)
+        result = score_dataframe(
+            artifact,
+            adapter_result.features,
+            labels=adapter_result.labels,
+            recalibrate=recalibrate,
+            percentile=percentile,
+        )
 
         run_id = uuid.uuid4().hex[:10]
         run_dir = DOWNLOADS_ROOT / run_id
@@ -166,7 +213,10 @@ async def score(
             n_scored=int(len(result.scores)),
             n_flagged=int(result.flags.sum()),
             windowed=result.windowed,
-            threshold=artifact.threshold,
+            threshold=result.threshold,
+            source_threshold=result.source_threshold,
+            recalibrate_mode=result.recalibrate_mode,
+            recalibrate_percentile=result.recalibrate_percentile,
             metrics=metrics_payload,
             preview=preview,
             download_url=f"/downloads/{run_id}/scores.parquet",

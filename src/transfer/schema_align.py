@@ -58,6 +58,39 @@ def common_types(types_yaml: dict, source: str, target: str) -> list[str]:
     return sorted(src & tgt)
 
 
+def project_dataframe(
+    df: pd.DataFrame,
+    feat_to_type: dict[str, str],
+    target_types: list[str] | None = None,
+    aggregations: dict[str, str] | None = None,
+) -> pd.DataFrame:
+    """Collapse ``df`` (raw features) to one column per canonical type.
+
+    Pure DataFrame-in, DataFrame-out helper reused by
+    :func:`project_bundle_to_types` (bundle-wrapped training path) and by
+    the inference adapters in :mod:`src.inference.adapters`. Missing types
+    get a zero column so the model always sees a fixed-width input.
+    """
+    aggregations = aggregations or {}
+    type_to_feats = _type_to_features(feat_to_type)
+    if target_types is None:
+        target_types = sorted(type_to_feats)
+
+    cols: dict[str, np.ndarray] = {}
+    for t in target_types:
+        feats = [f for f in type_to_feats.get(t, []) if f in df.columns]
+        if not feats:
+            cols[t] = np.zeros(len(df), dtype=np.float32)
+            continue
+        agg = aggregations.get(t, DEFAULT_AGG)
+        if agg not in _AGG_FNS:
+            raise ValueError(f"unknown aggregation '{agg}' for type '{t}'")
+        block = df[feats].to_numpy(dtype=np.float32)
+        cols[t] = _AGG_FNS[agg](block, axis=1)
+
+    return pd.DataFrame(cols, columns=target_types).astype(np.float32)
+
+
 def project_bundle_to_types(
     bundle: DatasetBundle,
     types_yaml: dict | None = None,
@@ -79,26 +112,13 @@ def project_bundle_to_types(
 
     feat_to_type = types_yaml[dataset_key]
     aggregations = types_yaml.get("aggregations", {})
-    type_to_feats = _type_to_features(feat_to_type)
     if target_types is None:
-        target_types = sorted(type_to_feats)
+        target_types = sorted(_type_to_features(feat_to_type))
 
-    cols = {}
-    for t in target_types:
-        feats = [f for f in type_to_feats.get(t, []) if f in bundle.features.columns]
-        if not feats:
-            # Either the dataset doesn't have this type, or features are
-            # missing from the actual frame. Use zero column so the model
-            # can still consume a fixed-width input.
-            cols[t] = np.zeros(len(bundle.features), dtype=np.float32)
-            continue
-        agg = aggregations.get(t, DEFAULT_AGG)
-        if agg not in _AGG_FNS:
-            raise ValueError(f"unknown aggregation '{agg}' for type '{t}'")
-        block = bundle.features[feats].to_numpy(dtype=np.float32)
-        cols[t] = _AGG_FNS[agg](block, axis=1)
+    new_features = project_dataframe(
+        bundle.features, feat_to_type, target_types, aggregations=aggregations
+    )
 
-    new_features = pd.DataFrame(cols, columns=target_types).astype(np.float32)
     return DatasetBundle(
         features=new_features,
         labels=bundle.labels,

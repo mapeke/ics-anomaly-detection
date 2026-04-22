@@ -51,3 +51,8 @@ th:first-child, td:first-child { text-align: left; }
 thead th { background: #f1f5f9; font-weight: 600; }
 tr.flag td { background: #fef2f2; }
 code { background: #f1f5f9; padding: 0.05rem 0.3rem; border-radius: 3px; }
+.row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+.row label { margin-bottom: 0; min-width: 5.5rem; }
+.row label.inline { min-width: 0; }
+.row input[type=number] { width: 5rem; margin-left: 0.25rem; }
+.row input[type=checkbox] { margin-right: 0.35rem; vertical-align: middle; }

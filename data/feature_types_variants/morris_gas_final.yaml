@@ -1,0 +1,60 @@
+# Morris gas-pipeline "gas_final.arff" variant.
+#
+# Self-describing tag file consumed by the generic_arff inference adapter.
+# Differs from the canonical IanArffDataset.arff in two important ways:
+#   1. Column names are split/renamed (e.g. command_address/response_address
+#      instead of a single 'address'; 'measurement' instead of 'pressure
+#      measurement'). This means the morris_gas adapter refuses to load it.
+#   2. The label column 'result' is multiclass (0 = normal, 1-7 = seven
+#      attack families) rather than a single binary column.
+
+name: morris_gas_final
+description: >
+  Multiclass-labelled Morris gas-pipeline capture (values 0-7 in 'result').
+  Treat any result > 0 as attack; attack_id preserves the class integer.
+label_column: result
+label_semantics: numeric_nonzero     # 0 = normal, non-zero = attack
+attack_id_column: result             # keeps class integer as the attack id
+drop_columns:
+  - time
+
+# Same aggregations as the main feature_types.yaml so a transfer model
+# trained on the HAI/Morris common type-vector can consume this variant.
+aggregations:
+  pressure: mean
+  pump_state: max
+  setpoint: mean
+  valve_position: max
+  control_signal: mean
+  system_state: max
+
+feature_types:
+  # Communication metadata — excluded from the transfer type-vector.
+  command_address: comm_metadata
+  response_address: comm_metadata
+  command_memory: comm_metadata
+  response_memory: comm_metadata
+  command_memory_count: comm_metadata
+  response_memory_count: comm_metadata
+  comm_read_function: comm_metadata
+  comm_write_fun: comm_metadata
+  resp_read_fun: comm_metadata
+  resp_write_fun: comm_metadata
+  sub_function: comm_metadata
+  command_length: comm_metadata
+  resp_length: comm_metadata
+  crc_rate: comm_metadata
+  # Control-loop parameters.
+  gain: control_signal
+  reset: control_signal
+  deadband: control_signal
+  cycletime: control_signal
+  rate: control_signal
+  setpoint: setpoint
+  control_mode: system_state
+  control_scheme: system_state
+  # Actuator states.
+  pump: pump_state
+  solenoid: valve_position
+  # Process measurement.
+  measurement: pressure

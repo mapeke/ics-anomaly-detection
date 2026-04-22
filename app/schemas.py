@@ -47,6 +47,9 @@ class ScoreResponse(BaseModel):
     n_flagged: int
     windowed: bool
     threshold: float
+    source_threshold: float
+    recalibrate_mode: str | None = None
+    recalibrate_percentile: float | None = None
     metrics: dict[str, MetricFamily] | None
     preview: list[PreviewRow]
     download_url: str
@@ -57,3 +60,15 @@ class ErrorResponse(BaseModel):
     detail: str | None = None
     missing: list[str] | None = None
     unexpected: list[str] | None = None
+
+
+class VariantInfo(BaseModel):
+    id: str
+    name: str
+    description: str
+    label_column: str | None
+    label_semantics: str
+
+
+class VariantList(BaseModel):
+    variants: list[VariantInfo]

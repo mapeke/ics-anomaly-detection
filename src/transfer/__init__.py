@@ -15,6 +15,7 @@ from .schema_align import (
     common_types,
     load_feature_types,
     project_bundle_to_types,
+    project_dataframe,
 )
 
 __all__ = [
@@ -25,4 +26,5 @@ __all__ = [
     "load_feature_types",
     "per_attack_process_f1",
     "project_bundle_to_types",
+    "project_dataframe",
 ]

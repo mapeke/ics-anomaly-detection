@@ -22,9 +22,33 @@
 
     <section class="card">
       <h2>2. Upload dataset</h2>
-      <p class="muted">Accepted: <code>.arff</code> (Morris gas-pipeline) or <code>.csv</code> with the same columns. Max 50 MB.</p>
+      <p class="muted">Accepted: <code>.arff</code> or <code>.csv</code>. Max 50 MB.</p>
       <form id="score-form">
-        <input type="file" id="file" name="file" accept=".arff,.csv,.txt" required />
+        <div class="row">
+          <label for="adapter">Adapter:</label>
+          <select id="adapter" name="adapter">
+            <option value="morris_gas">morris_gas (IanArffDataset.arff schema)</option>
+            <option value="generic_arff">generic_arff (variant-driven projection)</option>
+          </select>
+        </div>
+        <div id="variant-row" class="row hidden">
+          <label for="variant">Variant:</label>
+          <select id="variant" name="variant"></select>
+          <div id="variant-info" class="muted"></div>
+        </div>
+        <div class="row">
+          <label for="file">File:</label>
+          <input type="file" id="file" name="file" accept=".arff,.csv,.txt" required />
+        </div>
+        <div class="row">
+          <label for="recalibrate">
+            <input type="checkbox" id="recalibrate" />
+            Recalibrate threshold on uploaded data (target_val_percentile)
+          </label>
+          <label for="percentile" class="inline">percentile:
+            <input type="number" id="percentile" value="99" min="50" max="99.99" step="0.1" />
+          </label>
+        </div>
         <button type="submit" id="submit-btn">Score</button>
       </form>
       <div id="status" class="status"></div>
