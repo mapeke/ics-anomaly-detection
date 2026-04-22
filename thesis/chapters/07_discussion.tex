@@ -37,6 +37,9 @@ Yes; HAI 21.03 does not publish per-sensor attack targets in machine-readable fo
   \item \textbf{Consider Dense AE for localization even if a SOTA model is the detector.}  A hybrid pipeline --- SOTA for flagging, Dense AE for attribution --- would outperform either alone on operator-facing triage.
 \end{itemize}
 
+\paragraph{Threshold-transfer semantics in the external-validation tool.}
+The pipeline described in \S\ref{sec:external-validation} intentionally persists both the fitted model and the source-derived threshold, even though the source threshold is rarely calibrated for a new deployment.  This is a methodological choice: freezing the threshold keeps the artifact bit-reproducible against the run that produced it (the ``does my tool match my thesis number'' check), while the CLI and web app additionally accept a \code{target\_val\_percentile} recalibration matching the transfer protocol of \S\ref{sec:finding-tgt-cal}.  Users scoring an unseen dataset should read source-threshold F1 as a reproducibility check and target-calibrated F1 as the operational number; reporting only one would repeat the \code{src-cal} vs.\ \code{tgt-cal} confusion this thesis flags.
+
 \section{What we deliberately did not test}
 
 \begin{itemize}

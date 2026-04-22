@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ICS Anomaly Detection — External Validation</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1>ICS Anomaly Detection</h1>
+    <p class="sub">External validation — upload an unseen Morris gas-pipeline file and score it against a trained model artifact.</p>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>1. Select artifact</h2>
+      <label for="artifact">Saved artifact:</label>
+      <select id="artifact"></select>
+      <div id="artifact-info" class="muted"></div>
+    </section>
+
+    <section class="card">
+      <h2>2. Upload dataset</h2>
+      <p class="muted">Accepted: <code>.arff</code> (Morris gas-pipeline) or <code>.csv</code> with the same columns. Max 50 MB.</p>
+      <form id="score-form">
+        <input type="file" id="file" name="file" accept=".arff,.csv,.txt" required />
+        <button type="submit" id="submit-btn">Score</button>
+      </form>
+      <div id="status" class="status"></div>
+    </section>
+
+    <section id="results" class="card hidden">
+      <h2>3. Results</h2>
+      <div id="summary"></div>
+      <h3>Metrics</h3>
+      <div id="metrics"></div>
+      <h3>Preview (first 50 rows)</h3>
+      <div id="preview"></div>
+      <p><a id="download" href="#" download>Download full scores (parquet)</a></p>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
