@@ -36,10 +36,28 @@ class VariantSpec:
     @classmethod
     def from_yaml(cls, path: str | Path) -> "VariantSpec":
         path = Path(path)
-        raw: dict[str, Any] = yaml.safe_load(path.read_text())
+        return cls._from_raw(yaml.safe_load(path.read_text()), spec_id=path.stem)
+
+    @classmethod
+    def from_yaml_text(cls, text: str, spec_id: str = "uploaded") -> "VariantSpec":
+        """Build a :class:`VariantSpec` from an in-memory YAML string.
+
+        Used by the ad-hoc upload path in ``app.routes`` so a one-off variant
+        can be scored without committing a tag file to
+        ``data/feature_types_variants/``. Defaults ``id="uploaded"`` so
+        nothing collides with filed variants discovered by
+        :func:`list_variants`.
+        """
+        raw = yaml.safe_load(text)
+        if not isinstance(raw, dict):
+            raise ValueError("variant YAML must be a mapping (got non-dict root)")
+        return cls._from_raw(raw, spec_id=spec_id)
+
+    @classmethod
+    def _from_raw(cls, raw: dict[str, Any], *, spec_id: str) -> "VariantSpec":
         return cls(
-            id=path.stem,
-            name=raw.get("name", path.stem),
+            id=spec_id,
+            name=raw.get("name", spec_id),
             description=raw.get("description", ""),
             label_column=raw.get("label_column"),
             label_semantics=raw.get("label_semantics", "binary_numeric"),

@@ -4,6 +4,7 @@ const el = {
   adapter: document.getElementById("adapter"),
   variantRow: document.getElementById("variant-row"),
   variant: document.getElementById("variant"),
+  variantYaml: document.getElementById("variant-yaml"),
   variantInfo: document.getElementById("variant-info"),
   recalibrate: document.getElementById("recalibrate"),
   percentile: document.getElementById("percentile"),
@@ -118,7 +119,12 @@ el.form.addEventListener("submit", async (ev) => {
   fd.append("file", el.file.files[0]);
   fd.append("adapter", el.adapter.value);
   if (el.adapter.value === "generic_arff") {
-    fd.append("variant", el.variant.value);
+    // Ad-hoc YAML upload wins over the dropdown when both are present.
+    if (el.variantYaml.files && el.variantYaml.files[0]) {
+      fd.append("variant_yaml", el.variantYaml.files[0]);
+    } else {
+      fd.append("variant", el.variant.value);
+    }
   }
   if (el.recalibrate.checked) {
     fd.append("recalibrate", "target_val_percentile");

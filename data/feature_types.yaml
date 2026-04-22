@@ -24,6 +24,18 @@ aggregations:
   valve_position: max
   control_signal: mean
   system_state: max
+  # Electrical family (Phase C). No HAI/Morris-gas entries use these;
+  # they are added so generic_arff can tag Morris power-system captures
+  # without extending the core vocabulary downstream.
+  voltage: mean
+  current: mean
+  voltage_angle: mean      # circular quantities — mean is coarse but consistent
+  current_angle: mean
+  phase_angle: mean
+  frequency: mean
+  relay_state: max         # any-active semantics, matching pump_state
+  power: mean
+  impedance: mean
 
 # -- HAI 21.03 ----------------------------------------------------------
 hai:

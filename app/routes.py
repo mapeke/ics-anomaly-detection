@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse
 from src.inference import load_artifact, score_dataframe
 from src.inference.adapters import (
     SchemaMismatchError,
+    VariantSpec,
     get_variant,
     list_variants,
     load_generic_arff_file,
@@ -35,6 +36,7 @@ from .schemas import (
 CHECKPOINTS_ROOT = PROJECT_ROOT / "results" / "checkpoints"
 DOWNLOADS_ROOT = PROJECT_ROOT / "results" / "external" / "app_runs"
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+MAX_VARIANT_YAML_BYTES = 64 * 1024
 
 router = APIRouter()
 
@@ -118,15 +120,45 @@ async def score(
     file: UploadFile = File(...),
     adapter: str = Form("morris_gas"),
     variant: str | None = Form(None),
+    variant_yaml: UploadFile | None = File(None),
     recalibrate: str | None = Form(None),
     percentile: float = Form(99.0),
 ) -> ScoreResponse:
     if adapter not in {"morris_gas", "generic_arff"}:
         raise HTTPException(status_code=400, detail={"error": "unknown_adapter", "detail": adapter})
-    if adapter == "generic_arff" and not variant:
-        raise HTTPException(
-            status_code=400, detail={"error": "missing_variant", "detail": "adapter=generic_arff requires variant"}
-        )
+
+    variant_spec: VariantSpec | None = None
+    if adapter == "generic_arff":
+        if variant_yaml is not None and variant_yaml.filename:
+            yaml_bytes = await variant_yaml.read()
+            if len(yaml_bytes) > MAX_VARIANT_YAML_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"variant_yaml exceeds {MAX_VARIANT_YAML_BYTES} bytes",
+                )
+            try:
+                variant_spec = VariantSpec.from_yaml_text(yaml_bytes.decode("utf-8"))
+            except (UnicodeDecodeError, ValueError, Exception) as e:  # yaml.YAMLError subclasses Exception
+                raise HTTPException(
+                    status_code=400,
+                    detail={"error": "bad_variant_yaml", "detail": str(e)},
+                ) from e
+        elif variant:
+            try:
+                variant_spec = get_variant(variant)
+            except KeyError as e:
+                raise HTTPException(
+                    status_code=400,
+                    detail={"error": "unknown_variant", "detail": str(e)},
+                ) from e
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "missing_variant",
+                    "detail": "adapter=generic_arff requires variant or variant_yaml",
+                },
+            )
 
     artifact_dir = _resolve_artifact_dir(artifact_id)
 
@@ -153,7 +185,6 @@ async def score(
                     tmp_path, expected_features=artifact.feature_columns
                 )
             else:
-                variant_spec = get_variant(variant)
                 adapter_result = load_generic_arff_file(
                     tmp_path, variant=variant_spec, expected_features=artifact.feature_columns
                 )

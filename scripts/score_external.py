@@ -25,6 +25,7 @@ if str(ROOT) not in sys.path:
 
 from src.inference import load_artifact, score_dataframe  # noqa: E402
 from src.inference.adapters import (  # noqa: E402
+    VariantSpec,
     get_variant,
     load_generic_arff_file,
     load_morris_gas_file,
@@ -62,6 +63,12 @@ def main() -> None:
         help="variant id for --adapter generic_arff (see data/feature_types_variants/)",
     )
     ap.add_argument(
+        "--variant-yaml",
+        dest="variant_yaml",
+        type=Path,
+        help="path to an ad-hoc variant YAML file (mutually exclusive with --variant)",
+    )
+    ap.add_argument(
         "--recalibrate",
         choices=["target_val_percentile"],
         default=None,
@@ -90,9 +97,14 @@ def main() -> None:
     if args.adapter == "morris_gas":
         result = load_morris_gas_file(args.input, expected_features=artifact.feature_columns)
     else:  # generic_arff
-        if not args.variant:
-            ap.error("--adapter generic_arff requires --variant <id>")
-        variant = get_variant(args.variant)
+        if args.variant and args.variant_yaml:
+            ap.error("--variant and --variant-yaml are mutually exclusive")
+        if args.variant_yaml:
+            variant = VariantSpec.from_yaml_text(args.variant_yaml.read_text(encoding="utf-8"))
+        elif args.variant:
+            variant = get_variant(args.variant)
+        else:
+            ap.error("--adapter generic_arff requires --variant <id> or --variant-yaml <path>")
         result = load_generic_arff_file(
             args.input, variant=variant, expected_features=artifact.feature_columns
         )

@@ -1,0 +1,123 @@
+# TEMPLATE — requires real ARFF to validate.
+#
+# Morris Mississippi State "Power System Attack Datasets" (37 event
+# scenarios, multiclass marker label). Columns below follow the published
+# naming convention used in Morris et al. — 4 PMUs (R1-R4) × (phase angles
+# for 3 voltages + 3 currents, magnitudes for 6 voltages + 6 currents,
+# frequency, delta-frequency, apparent-power, impedance magnitude/angle)
+# plus 4 control-panel logs, 4 snort logs, 4 relay logs, and a marker.
+#
+# The template is not auto-discovered by /variants (it lives under
+# _templates/, which list_variants() skips). Copy into
+# data/feature_types_variants/morris_power.yaml and adjust column names
+# to match your actual ARFF header before use.
+
+name: morris_power
+description: >
+  TEMPLATE for Morris power-system captures (37-scenario multiclass marker).
+  Needs a real file under data/raw/morris_power/ for the end-to-end sanity
+  check to run; copy out of _templates/ into the parent directory to
+  expose in /variants.
+label_column: marker
+label_semantics: string_nonnormal   # 'Natural' = normal; other markers = attack
+attack_id_column: marker
+drop_columns:
+  - snort_log1
+  - snort_log2
+  - snort_log3
+  - snort_log4
+
+aggregations:
+  voltage: mean
+  current: mean
+  voltage_angle: mean
+  current_angle: mean
+  frequency: mean
+  relay_state: max
+  power: mean
+  impedance: mean
+
+feature_types:
+  # Voltage phase angles (PA1/PA2/PA3:VH are phases A/B/C on each PMU).
+  R1-PA1:VH: voltage_angle
+  R1-PA2:VH: voltage_angle
+  R1-PA3:VH: voltage_angle
+  R2-PA1:VH: voltage_angle
+  R2-PA2:VH: voltage_angle
+  R2-PA3:VH: voltage_angle
+  R3-PA1:VH: voltage_angle
+  R3-PA2:VH: voltage_angle
+  R3-PA3:VH: voltage_angle
+  R4-PA1:VH: voltage_angle
+  R4-PA2:VH: voltage_angle
+  R4-PA3:VH: voltage_angle
+  # Current phase angles (PA4/PA5/PA6:IH).
+  R1-PA4:IH: current_angle
+  R1-PA5:IH: current_angle
+  R1-PA6:IH: current_angle
+  R2-PA4:IH: current_angle
+  R2-PA5:IH: current_angle
+  R2-PA6:IH: current_angle
+  R3-PA4:IH: current_angle
+  R3-PA5:IH: current_angle
+  R3-PA6:IH: current_angle
+  R4-PA4:IH: current_angle
+  R4-PA5:IH: current_angle
+  R4-PA6:IH: current_angle
+  # Voltage magnitudes (PM1..PM6 per PMU).
+  R1-PM1:V: voltage
+  R1-PM2:V: voltage
+  R1-PM3:V: voltage
+  R2-PM1:V: voltage
+  R2-PM2:V: voltage
+  R2-PM3:V: voltage
+  R3-PM1:V: voltage
+  R3-PM2:V: voltage
+  R3-PM3:V: voltage
+  R4-PM1:V: voltage
+  R4-PM2:V: voltage
+  R4-PM3:V: voltage
+  # Current magnitudes (PM4..PM6 per PMU).
+  R1-PM4:I: current
+  R1-PM5:I: current
+  R1-PM6:I: current
+  R2-PM4:I: current
+  R2-PM5:I: current
+  R2-PM6:I: current
+  R3-PM4:I: current
+  R3-PM5:I: current
+  R3-PM6:I: current
+  R4-PM4:I: current
+  R4-PM5:I: current
+  R4-PM6:I: current
+  # Frequency + delta-frequency.
+  R1:F: frequency
+  R2:F: frequency
+  R3:F: frequency
+  R4:F: frequency
+  R1:DF: frequency
+  R2:DF: frequency
+  R3:DF: frequency
+  R4:DF: frequency
+  # Apparent power and impedance.
+  R1:S: power
+  R2:S: power
+  R3:S: power
+  R4:S: power
+  R1-PA:Z: impedance
+  R2-PA:Z: impedance
+  R3-PA:Z: impedance
+  R4-PA:Z: impedance
+  R1-PA:ZH: phase_angle
+  R2-PA:ZH: phase_angle
+  R3-PA:ZH: phase_angle
+  R4-PA:ZH: phase_angle
+  # Relay + control-panel logs (discrete state flags).
+  control_panel_log1: relay_state
+  control_panel_log2: relay_state
+  control_panel_log3: relay_state
+  control_panel_log4: relay_state
+  relay1_log: relay_state
+  relay2_log: relay_state
+  relay3_log: relay_state
+  relay4_log: relay_state

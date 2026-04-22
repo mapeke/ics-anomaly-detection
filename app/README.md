@@ -46,5 +46,16 @@ Power-system adapter and a user-uploaded ad-hoc variant YAML are Phase C; see `C
 
 ## Adding a new variant
 
+Two paths. Pick based on whether you want the variant to be reusable.
+
+**Option 1 — commit a variant file** (appears in `/variants` for everyone):
 1. Create `data/feature_types_variants/<my_variant>.yaml` modelled after `morris_gas_final.yaml`. List `label_column`, `label_semantics`, `drop_columns`, per-column `feature_types`, and per-type `aggregations`.
 2. Restart the app — `/variants` re-discovers YAML files at request time.
+
+**Option 2 — one-shot YAML upload** (Phase C; no repo changes):
+1. Write the same YAML structure to a local file (or paste it into the in-browser file picker).
+2. In the web form, pick `adapter=generic_arff`, then use the "or upload YAML" control next to the variant dropdown. The uploaded YAML wins over any dropdown selection.
+3. CLI equivalent: `python -m scripts.score_external --adapter generic_arff --variant-yaml /path/to/my.yaml ...`. `--variant` and `--variant-yaml` are mutually exclusive.
+4. The upload is not persisted — if you want it reusable, go back to Option 1.
+
+**Reference template:** `data/feature_types_variants/_templates/morris_power.yaml` sketches the Morris Mississippi State power-system schema (R1-R4 PMUs, voltage / current / frequency / relay_state columns). Not auto-discovered until you move it out of `_templates/`.
