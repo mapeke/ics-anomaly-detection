@@ -7,5 +7,12 @@ web app in ``app/``.
 from __future__ import annotations
 
 from .artifact import ModelArtifact, load_artifact, save_artifact
+from .pipeline import ScoreResult, score_dataframe
 
-__all__ = ["ModelArtifact", "load_artifact", "save_artifact"]
+__all__ = [
+    "ModelArtifact",
+    "load_artifact",
+    "save_artifact",
+    "ScoreResult",
+    "score_dataframe",
+]

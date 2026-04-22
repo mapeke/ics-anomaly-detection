@@ -216,36 +216,45 @@ def _parse_arff_header(path: Path) -> tuple[list[str], int]:
     raise ValueError(f"No @data section found in {path}")
 
 
-def _load_morris_raw(filename: str = MORRIS_DEFAULT_FILE) -> pd.DataFrame:
-    """Parse Morris ARFF and return a DataFrame with `label` and `attack_id`."""
-    path = MORRIS_ROOT / filename
-    if not path.exists():
-        raise FileNotFoundError(f"{path} not found. See data/README.md.")
+_MORRIS_LABEL_CANDIDATES = (
+    "binary result", "binary_result", "result", "class", "label",
+)
+_MORRIS_ATTACK_ID_CANDIDATES = (
+    "categorized result", "categorized_result", "specific result", "result",
+)
+_MORRIS_LEAK_COLS = frozenset({
+    "binary result", "binary_result",
+    "categorized result", "categorized_result",
+    "specific result", "specific_result",
+    "result", "class", "time",
+})
+_MORRIS_SENTINEL_THR = 1e9
 
-    attrs, data_line = _parse_arff_header(path)
-    df = pd.read_csv(
-        path,
-        header=None,
-        names=attrs,
-        skiprows=data_line,
-        na_values=["?"],
-        on_bad_lines="skip",
-        engine="python",
-    )
 
-    # Detect label column.
-    label_col = next(
-        (c for c in ("binary result", "binary_result", "result", "class", "label") if c in df.columns),
-        None,
-    )
+def prepare_morris_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalise a raw Morris-family DataFrame to the canonical schema.
+
+    Detects the binary label column (name from :data:`_MORRIS_LABEL_CANDIDATES`),
+    derives an ``attack_id`` column, drops leak/metadata/time columns, coerces
+    the remaining columns to numeric, and masks Morris's float32-MAX "no
+    reading" sentinel (values with ``|x| > 1e9``) to zero.
+
+    The returned frame has ``label`` and ``attack_id`` as the last two
+    columns; all other columns are float features ready for scaling.
+
+    Raises :class:`KeyError` if no label column is found — callers (web app,
+    CLI) can catch this and surface a clear error to the user.
+    """
+    df = df.copy()
+
+    label_col = next((c for c in _MORRIS_LABEL_CANDIDATES if c in df.columns), None)
     if label_col is None:
-        raise KeyError(f"No label column in Morris ARFF; cols: {list(df.columns)}")
+        raise KeyError(
+            f"No Morris label column found. Expected one of {list(_MORRIS_LABEL_CANDIDATES)}; "
+            f"got columns: {list(df.columns)}"
+        )
 
-    # Specific/categorized result gives us attack-id strings.
-    attack_id_col = next(
-        (c for c in ("categorized result", "categorized_result", "specific result", "result") if c in df.columns),
-        None,
-    )
+    attack_id_col = next((c for c in _MORRIS_ATTACK_ID_CANDIDATES if c in df.columns), None)
 
     col = df[label_col]
     if pd.api.types.is_numeric_dtype(col):
@@ -259,14 +268,7 @@ def _load_morris_raw(filename: str = MORRIS_DEFAULT_FILE) -> pd.DataFrame:
     else:
         df["attack_id"] = np.where(df["label"] == 1, "attack", "normal")
 
-    # Drop leak/metadata columns and monotonic time.
-    leak = {
-        "binary result", "binary_result",
-        "categorized result", "categorized_result",
-        "specific result", "specific_result",
-        "result", "class", "time",
-    }
-    df = df.drop(columns=[c for c in df.columns if c in leak])
+    df = df.drop(columns=[c for c in df.columns if c in _MORRIS_LEAK_COLS])
 
     feature_cols = [c for c in df.columns if c not in ("label", "attack_id")]
     for c in feature_cols:
@@ -276,9 +278,32 @@ def _load_morris_raw(filename: str = MORRIS_DEFAULT_FILE) -> pd.DataFrame:
     # sentinel (notably in 'pressure measurement'). These would dominate
     # MinMax scaling and the schema-align mean. Treat any magnitude above
     # a sane engineering range as missing.
-    SENTINEL_THR = 1e9
-    df[feature_cols] = df[feature_cols].mask(df[feature_cols].abs() > SENTINEL_THR, 0.0)
+    df[feature_cols] = df[feature_cols].mask(
+        df[feature_cols].abs() > _MORRIS_SENTINEL_THR, 0.0
+    )
     return df.reset_index(drop=True)
+
+
+def read_morris_arff(path: Path) -> pd.DataFrame:
+    """Parse a Morris-family ARFF file into a raw DataFrame (pre-normalisation)."""
+    attrs, data_line = _parse_arff_header(path)
+    return pd.read_csv(
+        path,
+        header=None,
+        names=attrs,
+        skiprows=data_line,
+        na_values=["?"],
+        on_bad_lines="skip",
+        engine="python",
+    )
+
+
+def _load_morris_raw(filename: str = MORRIS_DEFAULT_FILE) -> pd.DataFrame:
+    """Parse Morris ARFF and return a DataFrame with `label` and `attack_id`."""
+    path = MORRIS_ROOT / filename
+    if not path.exists():
+        raise FileNotFoundError(f"{path} not found. See data/README.md.")
+    return prepare_morris_frame(read_morris_arff(path))
 
 
 def load_morris(
