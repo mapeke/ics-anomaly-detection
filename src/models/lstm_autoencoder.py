@@ -7,6 +7,9 @@ attribution is per-feature MSE averaged across the window.
 """
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import numpy as np
 import torch
 from torch import nn
@@ -53,6 +56,9 @@ class LSTMAutoencoderAD(AnomalyDetector):
     ):
         self.window = window
         self.n_features = n_features
+        self.hidden_dim = hidden_dim
+        self.latent_dim = latent_dim
+        self.learning_rate = learning_rate
         self.epochs = epochs
         self.batch_size = batch_size
         self.device = torch.device(device)
@@ -125,3 +131,33 @@ class LSTMAutoencoderAD(AnomalyDetector):
     def attribute(self, X: np.ndarray) -> np.ndarray:
         # Per-feature MSE averaged over the window axis — shape (N, F).
         return self._per_window_se(X).mean(axis=1)
+
+    def save(self, path: Path) -> None:
+        path = Path(path)
+        path.mkdir(parents=True, exist_ok=True)
+        torch.save(self.model.state_dict(), path / "model.pt")
+        (path / "hyperparams.json").write_text(
+            json.dumps(
+                {
+                    "window": self.window,
+                    "n_features": self.n_features,
+                    "hidden_dim": self.hidden_dim,
+                    "latent_dim": self.latent_dim,
+                    "learning_rate": self.learning_rate,
+                    "epochs": self.epochs,
+                    "batch_size": self.batch_size,
+                }
+            )
+        )
+        (path / "meta.json").write_text(json.dumps({"name": self.name}))
+
+    @classmethod
+    def load(cls, path: Path, device: str = "cpu") -> "LSTMAutoencoderAD":
+        path = Path(path)
+        kwargs = json.loads((path / "hyperparams.json").read_text())
+        kwargs["device"] = device
+        obj = cls(**kwargs)
+        state = torch.load(path / "model.pt", map_location=device)
+        obj.model.load_state_dict(state)
+        obj.model.eval()
+        return obj

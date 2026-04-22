@@ -43,6 +43,9 @@ the window axis — same shape as ``LSTMAutoencoderAD.attribute``.
 """
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import numpy as np
 import torch
 from torch import nn
@@ -128,6 +131,9 @@ class USADModel(AnomalyDetector):
             raise ValueError(f"USAD scoring weights must sum to 1; got alpha={alpha}, beta={beta}")
         self.window = window
         self.n_features = n_features
+        self.hidden = hidden
+        self.latent = latent
+        self.learning_rate = learning_rate
         self.epochs = epochs
         self.batch_size = batch_size
         self.alpha = alpha
@@ -226,3 +232,35 @@ class USADModel(AnomalyDetector):
         # Per-feature MSE from the cycle path averaged over the window axis.
         _, se12 = self._per_window_se(X)
         return se12.mean(axis=1)
+
+    def save(self, path: Path) -> None:
+        path = Path(path)
+        path.mkdir(parents=True, exist_ok=True)
+        torch.save(self.model.state_dict(), path / "model.pt")
+        (path / "hyperparams.json").write_text(
+            json.dumps(
+                {
+                    "window": self.window,
+                    "n_features": self.n_features,
+                    "hidden": self.hidden,
+                    "latent": self.latent,
+                    "learning_rate": self.learning_rate,
+                    "epochs": self.epochs,
+                    "batch_size": self.batch_size,
+                    "alpha": self.alpha,
+                    "beta": self.beta,
+                }
+            )
+        )
+        (path / "meta.json").write_text(json.dumps({"name": self.name}))
+
+    @classmethod
+    def load(cls, path: Path, device: str = "cpu") -> "USADModel":
+        path = Path(path)
+        kwargs = json.loads((path / "hyperparams.json").read_text())
+        kwargs["device"] = device
+        obj = cls(**kwargs)
+        state = torch.load(path / "model.pt", map_location=device)
+        obj.model.load_state_dict(state)
+        obj.model.eval()
+        return obj

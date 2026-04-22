@@ -5,6 +5,9 @@ the per-feature squared error — trivial attribution for free.
 """
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import numpy as np
 import torch
 from torch import nn
@@ -43,6 +46,9 @@ class DenseAutoencoderAD(AnomalyDetector):
         device: str = "cpu",
         verbose: bool = False,
     ):
+        self.input_dim = input_dim
+        self.hidden = tuple(hidden)
+        self.learning_rate = learning_rate
         self.epochs = epochs
         self.batch_size = batch_size
         self.device = torch.device(device)
@@ -111,3 +117,32 @@ class DenseAutoencoderAD(AnomalyDetector):
 
     def attribute(self, X: np.ndarray) -> np.ndarray:
         return self._per_feature_se(X)
+
+    def save(self, path: Path) -> None:
+        path = Path(path)
+        path.mkdir(parents=True, exist_ok=True)
+        torch.save(self.model.state_dict(), path / "model.pt")
+        (path / "hyperparams.json").write_text(
+            json.dumps(
+                {
+                    "input_dim": self.input_dim,
+                    "hidden": list(self.hidden),
+                    "learning_rate": self.learning_rate,
+                    "epochs": self.epochs,
+                    "batch_size": self.batch_size,
+                }
+            )
+        )
+        (path / "meta.json").write_text(json.dumps({"name": self.name}))
+
+    @classmethod
+    def load(cls, path: Path, device: str = "cpu") -> "DenseAutoencoderAD":
+        path = Path(path)
+        kwargs = json.loads((path / "hyperparams.json").read_text())
+        kwargs["hidden"] = tuple(kwargs["hidden"])
+        kwargs["device"] = device
+        obj = cls(**kwargs)
+        state = torch.load(path / "model.pt", map_location=device)
+        obj.model.load_state_dict(state)
+        obj.model.eval()
+        return obj

@@ -25,6 +25,7 @@ from src.config import RunConfig
 from src.data_loader import DatasetBundle, load_hai, load_morris
 from src.evaluation import etapr_f1, point_adjust_f1, pointwise_metrics
 from src.evaluation.pointwise import best_f1_threshold
+from src.inference import ModelArtifact, save_artifact
 from src.models import build
 from src.preprocessing import make_windows, percentile_threshold, scale_bundle, window_labels
 from src.utils import METRICS_DIR, set_seed
@@ -41,7 +42,7 @@ def _load_dataset(cfg) -> DatasetBundle:
 
 
 def _prepare_arrays(run: RunConfig):
-    """Return (X_train, X_val, X_test, y_test) possibly windowed, plus ctx."""
+    """Return (X_train, X_val, X_test, y_test, feature_names, scaler)."""
     bundle = _load_dataset(run.data)
     scaled = scale_bundle(bundle)
 
@@ -58,7 +59,7 @@ def _prepare_arrays(run: RunConfig):
         y_test = window_labels(y_test, run.data.window, run.data.stride)
         X_test = X_test_w
 
-    return X_train, X_val, X_test, y_test, scaled.feature_names
+    return X_train, X_val, X_test, y_test, scaled.feature_names, scaled.scaler
 
 
 _WINDOWED_MODELS = {"lstm_ae", "usad", "tranad"}
@@ -98,7 +99,7 @@ def _pick_threshold(method: str, val_scores: np.ndarray, test_scores: np.ndarray
 
 def run_once(run: RunConfig, seed: int) -> list[dict]:
     set_seed(seed)
-    X_train, X_val, X_test, y_test, _ = _prepare_arrays(run)
+    X_train, X_val, X_test, y_test, feature_names, scaler = _prepare_arrays(run)
     model = _build_model(run, X_train, seed)
 
     t0 = time.time()
@@ -110,6 +111,28 @@ def run_once(run: RunConfig, seed: int) -> list[dict]:
     threshold = _pick_threshold(
         run.eval.threshold_method, val_scores, test_scores, y_test, run.eval.val_percentile
     )
+
+    if run.artifact.save_dir:
+        artifact = ModelArtifact(
+            model=model,
+            scaler=scaler,
+            threshold=float(threshold),
+            threshold_strategy=run.eval.threshold_method,
+            threshold_percentile=(
+                run.eval.val_percentile
+                if run.eval.threshold_method == "val_percentile"
+                else None
+            ),
+            feature_columns=list(feature_names),
+            window=run.data.window,
+            stride=run.data.stride,
+            trained_on=run.data.dataset,
+            config_hash=run.hash(),
+            seed=seed,
+        )
+        out_dir = Path(run.artifact.save_dir) / f"seed{seed}"
+        save_artifact(artifact, out_dir)
+        print(f"     artifact -> {out_dir}")
 
     rows: list[dict] = []
     base = {

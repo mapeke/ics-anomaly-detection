@@ -6,6 +6,9 @@ model names from YAML configs.
 """
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from .autoencoder import DenseAutoencoderAD
 from .base import AnomalyDetector
 from .isolation_forest import IsolationForestAD
@@ -31,6 +34,21 @@ def build(name: str, **kwargs) -> AnomalyDetector:
     return REGISTRY[name](**kwargs)
 
 
+def load_model(path: Path, **load_kwargs) -> AnomalyDetector:
+    """Load a fitted model from ``path`` without needing its concrete class.
+
+    Reads ``meta.json`` to pick the right :data:`REGISTRY` entry, then
+    delegates to that class's :meth:`AnomalyDetector.load`. ``load_kwargs``
+    (e.g. ``device="cuda"``) are passed through.
+    """
+    path = Path(path)
+    meta = json.loads((path / "meta.json").read_text())
+    name = meta["name"]
+    if name not in REGISTRY:
+        raise KeyError(f"Unknown model '{name}' in {path / 'meta.json'}.")
+    return REGISTRY[name].load(path, **load_kwargs)
+
+
 __all__ = [
     "AnomalyDetector",
     "DenseAutoencoderAD",
@@ -41,4 +59,5 @@ __all__ = [
     "USADModel",
     "REGISTRY",
     "build",
+    "load_model",
 ]

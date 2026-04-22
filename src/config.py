@@ -42,12 +42,25 @@ class EvalConfig:
 
 
 @dataclass
+class ArtifactConfig:
+    """Optional: persist the fitted model + scaler + threshold for reuse.
+
+    When ``save_dir`` is set, each seed's artifact lands at
+    ``<save_dir>/seed<seed>/`` so cross-seed comparisons remain possible.
+    Default is off (None) — no behaviour change for existing configs.
+    """
+
+    save_dir: str | None = None
+
+
+@dataclass
 class RunConfig:
     name: str
     data: DataConfig
     model: ModelConfig
     train: TrainConfig = field(default_factory=TrainConfig)
     eval: EvalConfig = field(default_factory=EvalConfig)
+    artifact: ArtifactConfig = field(default_factory=ArtifactConfig)
     seeds: list[int] = field(default_factory=lambda: [42])
     notes: str = ""
 
@@ -60,6 +73,7 @@ class RunConfig:
             model=ModelConfig(**raw["model"]),
             train=TrainConfig(**raw.get("train", {})),
             eval=EvalConfig(**raw.get("eval", {})),
+            artifact=ArtifactConfig(**raw.get("artifact", {})),
             seeds=raw.get("seeds", [42]),
             notes=raw.get("notes", ""),
         )

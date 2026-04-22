@@ -33,10 +33,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from experiments.run import _DEEP_MODELS, _WINDOWED_MODELS, append_summary  # noqa: E402
-from src.config import EvalConfig, ModelConfig, TrainConfig  # noqa: E402
+from src.config import ArtifactConfig, EvalConfig, ModelConfig, TrainConfig  # noqa: E402
 from src.data_loader import DatasetBundle, load_hai, load_morris  # noqa: E402
 from src.evaluation import etapr_f1, point_adjust_f1, pointwise_metrics  # noqa: E402
 from src.evaluation.pointwise import best_f1_threshold  # noqa: E402
+from src.inference import ModelArtifact, save_artifact  # noqa: E402
 from src.models import build  # noqa: E402
 from src.preprocessing import (  # noqa: E402
     make_windows,
@@ -68,6 +69,7 @@ class TransferRunConfig:
     model: ModelConfig
     train: TrainConfig = field(default_factory=TrainConfig)
     eval: EvalConfig = field(default_factory=EvalConfig)
+    artifact: ArtifactConfig = field(default_factory=ArtifactConfig)
     seeds: list[int] = field(default_factory=lambda: [42])
     notes: str = ""
 
@@ -80,6 +82,7 @@ class TransferRunConfig:
             model=ModelConfig(**raw["model"]),
             train=TrainConfig(**raw.get("train", {})),
             eval=EvalConfig(**raw.get("eval", {})),
+            artifact=ArtifactConfig(**raw.get("artifact", {})),
             seeds=raw.get("seeds", [42]),
             notes=raw.get("notes", ""),
         )
@@ -184,6 +187,34 @@ def run_once(run: TransferRunConfig, seed: int) -> list[dict]:
         threshold_source = "test_oracle"
     else:
         raise ValueError(run.eval.threshold_method)
+
+    if run.artifact.save_dir:
+        artifact = ModelArtifact(
+            model=model,
+            scaler=src.scaler,
+            threshold=float(threshold),
+            threshold_strategy=run.eval.threshold_method,
+            threshold_percentile=(
+                run.eval.val_percentile
+                if run.eval.threshold_method in {"val_percentile", "target_val_percentile"}
+                else None
+            ),
+            feature_columns=list(src.feature_names),
+            window=run.data.window,
+            stride=run.data.stride,
+            trained_on=f"{run.data.source_dataset}__to__{run.data.target_dataset}",
+            config_hash=run.hash(),
+            seed=seed,
+            extra={
+                "source_dataset": run.data.source_dataset,
+                "target_dataset": run.data.target_dataset,
+                "threshold_source": threshold_source,
+                "target_types": target_types,
+            },
+        )
+        out_dir = Path(run.artifact.save_dir) / f"seed{seed}"
+        save_artifact(artifact, out_dir)
+        print(f"     artifact -> {out_dir}")
 
     base = {
         "run_name": run.name,

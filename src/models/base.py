@@ -7,6 +7,7 @@ uniformly.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 import numpy as np
 
@@ -50,3 +51,25 @@ class AnomalyDetector(ABC):
     def supports_attribution(self) -> bool:
         """Override or check via method override to enable attribution paths."""
         return type(self).attribute is not AnomalyDetector.attribute
+
+    # ------------------------------------------------------------------
+    # Persistence
+    # ------------------------------------------------------------------
+    # Convention: ``save`` writes the fitted model into a *directory*; the
+    # on-disk layout is backend-specific but always includes a top-level
+    # ``meta.json`` carrying ``{"name": <registry key>}`` so the registry
+    # loader in ``src.models.load_model`` can dispatch without the caller
+    # needing to know the concrete class.
+
+    def save(self, path: Path) -> None:
+        """Persist a fitted model to ``path`` (created if missing)."""
+        raise NotImplementedError(
+            f"{type(self).__name__} does not implement save()."
+        )
+
+    @classmethod
+    def load(cls, path: Path) -> "AnomalyDetector":
+        """Rebuild a fitted model previously written by :meth:`save`."""
+        raise NotImplementedError(
+            f"{cls.__name__} does not implement load()."
+        )

@@ -45,7 +45,9 @@ Divergences from the reference repo
 """
 from __future__ import annotations
 
+import json
 import math
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -155,6 +157,11 @@ class TranADModel(AnomalyDetector):
     ):
         self.window = window
         self.n_features = n_features
+        self.d_model = d_model
+        self.n_heads = n_heads
+        self.ff_dim = ff_dim
+        self.dropout = dropout
+        self.learning_rate = learning_rate
         self.epochs = epochs
         self.batch_size = batch_size
         self.device = torch.device(device)
@@ -282,3 +289,35 @@ class TranADModel(AnomalyDetector):
                 attr = (w_time.unsqueeze(-1) * se).sum(dim=1)     # (B, F)
             out[i : i + bs] = attr.cpu().numpy()
         return out
+
+    def save(self, path: Path) -> None:
+        path = Path(path)
+        path.mkdir(parents=True, exist_ok=True)
+        torch.save(self.model.state_dict(), path / "model.pt")
+        (path / "hyperparams.json").write_text(
+            json.dumps(
+                {
+                    "window": self.window,
+                    "n_features": self.n_features,
+                    "d_model": self.d_model,
+                    "n_heads": self.n_heads,
+                    "ff_dim": self.ff_dim,
+                    "dropout": self.dropout,
+                    "learning_rate": self.learning_rate,
+                    "epochs": self.epochs,
+                    "batch_size": self.batch_size,
+                }
+            )
+        )
+        (path / "meta.json").write_text(json.dumps({"name": self.name}))
+
+    @classmethod
+    def load(cls, path: Path, device: str = "cpu") -> "TranADModel":
+        path = Path(path)
+        kwargs = json.loads((path / "hyperparams.json").read_text())
+        kwargs["device"] = device
+        obj = cls(**kwargs)
+        state = torch.load(path / "model.pt", map_location=device)
+        obj.model.load_state_dict(state)
+        obj.model.eval()
+        return obj
