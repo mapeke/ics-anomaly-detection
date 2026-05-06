@@ -8,16 +8,10 @@ uploaded file is not compatible with the chosen artifact.
 """
 from __future__ import annotations
 
-from .generic_arff import load_generic_arff_file
 from .morris_gas import AdapterResult, SchemaMismatchError, load_morris_gas_file
-from .variants import VariantSpec, get_variant, list_variants
 
 __all__ = [
     "AdapterResult",
     "SchemaMismatchError",
-    "VariantSpec",
-    "get_variant",
-    "list_variants",
-    "load_generic_arff_file",
     "load_morris_gas_file",
 ]
