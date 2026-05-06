@@ -1,0 +1,24 @@
+{
+  "datasets": [
+    {
+      "id": "hai_test_sample",
+      "name": "HAI 21.03 (test slice)",
+      "description": "Contiguous slice of the HAI 21.03 test split with both attack and normal rows. Native sensor column names preserved (P1_*, P2_*, P3_*, P4_*). Use with HAI-trained artifacts.",
+      "n_rows": 15000,
+      "n_features": 79,
+      "attack_rate": 0.032,
+      "source": "data/raw/hai/HAI 21.03/",
+      "filename": "hai_test_sample.csv"
+    },
+    {
+      "id": "morris_gas_test_sample",
+      "name": "Morris Gas Pipeline (test slice)",
+      "description": "Contiguous slice of the Morris gas-pipeline test split with both attack and normal rows. IanArffDataset.arff schema preserved. Use with Morris-trained or HAI->Morris transfer artifacts.",
+      "n_rows": 15000,
+      "n_features": 16,
+      "attack_rate": 0.486467,
+      "source": "data/raw/morris/IanArffDataset.arff",
+      "filename": "morris_gas_test_sample.csv"
+    }
+  ]
+}

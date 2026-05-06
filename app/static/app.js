@@ -3,6 +3,10 @@ const el = {
   artifactInfo: document.getElementById("artifact-info"),
   form: document.getElementById("score-form"),
   file: document.getElementById("file"),
+  uploadRow: document.getElementById("upload-row"),
+  bundledRow: document.getElementById("bundled-row"),
+  bundled: document.getElementById("bundled-dataset"),
+  bundledInfo: document.getElementById("bundled-info"),
   submit: document.getElementById("submit-btn"),
   status: document.getElementById("status"),
   results: document.getElementById("results"),
@@ -13,6 +17,7 @@ const el = {
 };
 
 let artifacts = [];
+let demoDatasets = [];
 
 function fmt(v, digits = 4) {
   if (v === null || v === undefined || Number.isNaN(v)) return "—";
@@ -67,12 +72,52 @@ function renderArtifactInfo() {
     `git: <code>${a.git_sha.slice(0, 7)}</code>`;
 }
 
+async function loadDemoDatasets() {
+  const res = await fetch("/demo-datasets");
+  if (!res.ok) return;
+  const data = await res.json();
+  demoDatasets = data.datasets || [];
+  el.bundled.innerHTML = "";
+  for (const d of demoDatasets) {
+    const opt = document.createElement("option");
+    opt.value = d.id;
+    opt.textContent = `${d.name} (${d.n_rows} rows · ${d.n_features} features · ${(d.attack_rate * 100).toFixed(1)}% attack)`;
+    el.bundled.appendChild(opt);
+  }
+  renderBundledInfo();
+}
+
+function renderBundledInfo() {
+  const d = demoDatasets.find((x) => x.id === el.bundled.value);
+  el.bundledInfo.textContent = d ? d.description : "";
+}
+
+function selectedSource() {
+  const checked = el.form.querySelector('input[name="source"]:checked');
+  return checked ? checked.value : "upload";
+}
+
+function syncSourceVisibility() {
+  const isBundled = selectedSource() === "bundled";
+  el.uploadRow.classList.toggle("hidden", isBundled);
+  el.bundledRow.classList.toggle("hidden", !isBundled);
+}
+
 el.artifact.addEventListener("change", renderArtifactInfo);
+el.bundled.addEventListener("change", renderBundledInfo);
+for (const radio of el.form.querySelectorAll('input[name="source"]')) {
+  radio.addEventListener("change", syncSourceVisibility);
+}
 
 el.form.addEventListener("submit", async (ev) => {
   ev.preventDefault();
-  if (!el.file.files[0]) {
+  const source = selectedSource();
+  if (source === "upload" && !el.file.files[0]) {
     setStatus("pick a file first", "err");
+    return;
+  }
+  if (source === "bundled" && !el.bundled.value) {
+    setStatus("pick a bundled dataset first", "err");
     return;
   }
   el.submit.disabled = true;
@@ -81,7 +126,11 @@ el.form.addEventListener("submit", async (ev) => {
 
   const fd = new FormData();
   fd.append("artifact_id", el.artifact.value);
-  fd.append("file", el.file.files[0]);
+  if (source === "upload") {
+    fd.append("file", el.file.files[0]);
+  } else {
+    fd.append("bundled_dataset", el.bundled.value);
+  }
 
   let res;
   try {
@@ -146,4 +195,6 @@ function renderResults(data) {
   el.download.href = data.download_url;
 }
 
+syncSourceVisibility();
 loadArtifacts();
+loadDemoDatasets();

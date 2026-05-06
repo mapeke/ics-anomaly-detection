@@ -57,3 +57,18 @@ class ErrorResponse(BaseModel):
     detail: str | None = None
     missing: list[str] | None = None
     unexpected: list[str] | None = None
+
+
+class DemoDatasetInfo(BaseModel):
+    id: str                         # manifest key, used by /score's bundled_dataset form field
+    name: str
+    description: str
+    n_rows: int
+    n_features: int
+    attack_rate: float
+    source: str
+    filename: str
+
+
+class DemoDatasetList(BaseModel):
+    datasets: list[DemoDatasetInfo]

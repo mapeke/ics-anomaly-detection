@@ -17,12 +17,22 @@ uvicorn app.main:app --reload
 ## Endpoints
 
 - `GET /artifacts` — list saved artifacts discovered under `results/checkpoints/`.
+- `GET /demo-datasets` — list bundled demo datasets discovered under `data/demo/manifest.json`.
 - `POST /score` — multipart form fields:
   - `artifact_id` (required)
-  - `file` (required) — `.arff` or `.csv`
+  - **exactly one** of `file` (`.arff` or `.csv` upload) or `bundled_dataset` (id from `/demo-datasets`)
   Returns JSON `{artifact, n_input_rows, n_scored, n_flagged, threshold, metrics, preview, download_url}`.
 - `GET /downloads/{run_id}/scores.parquet` — download the full per-row scores + flags (+ labels when present).
 - `GET /docs` — FastAPI-generated OpenAPI page.
+
+## Bundled demo datasets
+
+The app ships with two test-split slices under `data/demo/` so visitors can score the canonical thesis datasets in one click without acquiring the source data themselves:
+
+- **`hai_test_sample.csv`** — ~15k contiguous rows from the HAI 21.03 test split with both attack and normal rows. Native sensor column names (`P1_*`, `P2_*`, `P3_*`, `P4_*`) preserved. Use with HAI-trained artifacts.
+- **`morris_gas_test_sample.csv`** — ~15k contiguous rows from the Morris gas-pipeline test split. `IanArffDataset.arff` schema preserved. Use with Morris-trained or HAI→Morris transfer artifacts.
+
+Both are produced deterministically (seed=42, first contiguous test-window of length ≤ 15000 containing both classes) by `python -m scripts.build_demo_datasets`. Re-running yields byte-identical files. The manifest at `data/demo/manifest.json` is the source of truth for `/demo-datasets`.
 
 ## Scope and caveats
 

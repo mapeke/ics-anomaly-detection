@@ -21,12 +21,22 @@
     </section>
 
     <section class="card">
-      <h2>2. Upload dataset</h2>
-      <p class="muted">Accepted: <code>.arff</code> or <code>.csv</code>. Max 50 MB.</p>
+      <h2>2. Pick dataset</h2>
       <form id="score-form">
-        <div class="row">
+        <fieldset class="input-source">
+          <legend>Input source</legend>
+          <label class="inline"><input type="radio" name="source" value="upload" checked /> Upload my own file</label>
+          <label class="inline"><input type="radio" name="source" value="bundled" /> Use bundled sample</label>
+        </fieldset>
+        <div class="row" id="upload-row">
           <label for="file">File:</label>
-          <input type="file" id="file" name="file" accept=".arff,.csv,.txt" required />
+          <input type="file" id="file" name="file" accept=".arff,.csv,.txt" />
+          <span class="muted">.arff or .csv, max 50 MB</span>
+        </div>
+        <div class="row hidden" id="bundled-row">
+          <label for="bundled-dataset">Sample:</label>
+          <select id="bundled-dataset" name="bundled_dataset"></select>
+          <div id="bundled-info" class="muted"></div>
         </div>
         <button type="submit" id="submit-btn">Score</button>
       </form>

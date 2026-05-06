@@ -22,6 +22,8 @@ from src.utils import PROJECT_ROOT
 from .schemas import (
     ArtifactInfo,
     ArtifactList,
+    DemoDatasetInfo,
+    DemoDatasetList,
     MetricFamily,
     PreviewRow,
     ScoreResponse,
@@ -29,6 +31,7 @@ from .schemas import (
 
 CHECKPOINTS_ROOT = PROJECT_ROOT / "results" / "checkpoints"
 DOWNLOADS_ROOT = PROJECT_ROOT / "results" / "external" / "app_runs"
+DEMO_DIR = PROJECT_ROOT / "data" / "demo"
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
 router = APIRouter()
@@ -91,27 +94,71 @@ def list_artifacts() -> ArtifactList:
     return ArtifactList(artifacts=_discover_artifacts())
 
 
+def _read_demo_manifest() -> dict:
+    manifest_path = DEMO_DIR / "manifest.json"
+    if not manifest_path.exists():
+        return {"datasets": []}
+    return json.loads(manifest_path.read_text(encoding="utf-8"))
+
+
+def _resolve_bundled_dataset(bundled_id: str) -> Path:
+    """Look up bundled dataset by manifest id; never construct a path from the input string."""
+    manifest = _read_demo_manifest()
+    entry = next((d for d in manifest.get("datasets", []) if d["id"] == bundled_id), None)
+    if entry is None:
+        raise HTTPException(status_code=400, detail=f"unknown bundled_dataset: {bundled_id}")
+    return DEMO_DIR / entry["filename"]
+
+
+@router.get("/demo-datasets", response_model=DemoDatasetList)
+def list_demo_datasets() -> DemoDatasetList:
+    manifest = _read_demo_manifest()
+    return DemoDatasetList(
+        datasets=[DemoDatasetInfo(**d) for d in manifest.get("datasets", [])]
+    )
+
+
 @router.post("/score", response_model=ScoreResponse)
 async def score(
     artifact_id: str = Form(...),
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(None),
+    bundled_dataset: str | None = Form(None),
 ) -> ScoreResponse:
+    if (file is None or not file.filename) and bundled_dataset is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide exactly one of `file` or `bundled_dataset`",
+        )
+    if (file is not None and file.filename) and bundled_dataset is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide exactly one of `file` or `bundled_dataset`, not both",
+        )
+
     artifact_dir = _resolve_artifact_dir(artifact_id)
 
-    suffix = Path(file.filename or "upload.arff").suffix.lower() or ".arff"
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        total = 0
-        while True:
-            chunk = await file.read(1 << 20)
-            if not chunk:
-                break
-            total += len(chunk)
-            if total > MAX_UPLOAD_BYTES:
-                tmp.close()
-                Path(tmp.name).unlink(missing_ok=True)
-                raise HTTPException(status_code=413, detail=f"upload exceeds {MAX_UPLOAD_BYTES} bytes")
-            tmp.write(chunk)
-        tmp_path = Path(tmp.name)
+    if bundled_dataset is not None:
+        # Manifest-id lookup (no path traversal possible).
+        tmp_path = _resolve_bundled_dataset(bundled_dataset)
+        if not tmp_path.exists():
+            raise HTTPException(status_code=500, detail=f"bundled dataset file missing: {tmp_path.name}")
+        owns_tmp = False
+    else:
+        suffix = Path(file.filename or "upload.arff").suffix.lower() or ".arff"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            total = 0
+            while True:
+                chunk = await file.read(1 << 20)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > MAX_UPLOAD_BYTES:
+                    tmp.close()
+                    Path(tmp.name).unlink(missing_ok=True)
+                    raise HTTPException(status_code=413, detail=f"upload exceeds {MAX_UPLOAD_BYTES} bytes")
+                tmp.write(chunk)
+            tmp_path = Path(tmp.name)
+        owns_tmp = True
 
     try:
         artifact = load_artifact(artifact_dir)
@@ -179,7 +226,8 @@ async def score(
             download_url=f"/downloads/{run_id}/scores.parquet",
         )
     finally:
-        tmp_path.unlink(missing_ok=True)
+        if owns_tmp:
+            tmp_path.unlink(missing_ok=True)
 
 
 @router.get("/downloads/{run_id}/{filename}")
