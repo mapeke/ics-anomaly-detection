@@ -31,6 +31,9 @@ env/
 results/checkpoints/
 models/checkpoints/
 
+# External-validation scoring outputs (per-run, large, not authoritative)
+results/external/
+
 # OS / IDE / Assistants
 .DS_Store
 Thumbs.db

@@ -14,4 +14,6 @@ eval:
   threshold_method: val_percentile
   val_percentile: 99.0
   metrics: [pointwise, point_adjust, etapr]
+artifact:
+  save_dir: results/checkpoints/transfer_morris_to_hai_isolation_forest
 seeds: [42, 7, 123]
