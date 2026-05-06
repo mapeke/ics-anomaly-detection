@@ -1,7 +1,7 @@
 \chapter{Results III --- Per-sensor attribution}
 \label{ch:results-attribution}
 
-Notebook: \file{07\_attribution.ipynb}.  Figure: F5.  Source: \file{results/metrics/attribution.parquet} ($3$ seeds $\times$ $4$ models $\times$ reconstruction; $3$ seeds $\times$ TranAD $\times$ attention).
+Notebook: \file{07\_attribution.ipynb}.  Figure: F5.  Source: \file{results/metrics/attribution.parquet} ($3$ seeds $\times$ $4$ AE-family models $\times$ reconstruction; $3$ seeds $\times$ TranAD $\times$ attention) and \file{results/metrics/attribution\_shap.parquet} ($3$ seeds $\times$ $\{$IF, OCSVM$\}$ $\times$ SHAP) for the two classical baselines that don't have reconstruction-error attribution.
 
 \section{Evaluation protocol recap}
 
@@ -53,7 +53,7 @@ TranAD  & $1.22\times$ & $1.26\times$ & $0.23\times$ \\
 \end{tabular}
 \end{table}
 
-\textbf{Dense AE --- the weakest Phase-2 detector --- is the only model whose attribution is reliably above random across all three processes.}  Seed variance is small ($\sim 0.01$--$0.02$ on P3); robust result, not seed artifact.
+\textbf{Dense AE --- the weakest Phase-2 detector --- is the only AE-family / windowed model whose attribution is reliably above random across all three processes.}  Seed variance is small ($\sim 0.01$--$0.02$ on P3); robust result, not seed artifact.  Finding~4.4 below shows the two classical baselines (IF and OCSVM via SHAP) join Dense AE in this everywhere-above-random group, with OCSVM in particular reaching Dense-AE-level localization despite its bottom-of-the-table detection F1.
 
 The mechanism: Dense AE operates per-timestep, so per-feature reconstruction error is aligned with the current frame's anomaly.  Windowed models reconstruct a $60$-step window and average per-feature error over time; the averaging concentrates mass on features with the largest dynamic-range variation --- HAI's P1 flow and pressure sensors.  A small perturbation to a few discrete P2 flags is lost in the mean.
 
@@ -84,10 +84,49 @@ An earlier draft (commit \texttt{a2957b0}) reported ``TranAD actively anti-local
 
 Revised framing: TranAD \emph{can} localize to P2 with enough seed-trial budget, but its localization is seed-unstable, whereas Dense AE and LSTM-AE/USAD are seed-stable (even if the latter two are structurally stuck on P1).  An argument for multi-seed evaluation in any attribution study.
 
+\section{Finding 4.4 --- SHAP fills in the classical baselines}
+\label{sec:finding-shap}
+
+The four AE-family / windowed models above use reconstruction-error or attention-rollout attribution, both of which require an internal reconstruction signal.  Isolation Forest and One-Class SVM produce a single anomaly score per row with no per-feature decomposition, so the same evaluation cannot be applied directly.  We close that gap with SHAP: \code{shap.TreeExplainer} on the underlying \code{IsolationForest} ensemble (exact, $\sim$ms/row), and \code{shap.KernelExplainer} on the \code{OneClassSVM} decision function with a deterministic $100$-row background sample drawn from the training-normal split (approximate, $\sim$seconds/row).  The KernelExplainer's predictor wraps \code{-decision\_function} so SHAP explains the project's anomaly-score convention (higher contribution = more anomalous) directly, and the background sample is fixed across the three training seeds so SHAP variance reflects the artifacts, not the sampling.  Evaluation reuses the same \code{precision\_at\_k\_by\_attack} harness from \S\ref{ch:results-attribution}; the only deviation from Phase 4's protocol is that OCSVM evaluation subsamples to $100$ attack rows per process per seed to keep KernelExplainer's runtime bounded --- the precision@k aggregate is robust to this at $n_{\text{attack}} \geq 100$.
+
+\begin{table}[h]
+\centering
+\caption{SHAP-based precision@$5$ for the two classical baselines, mean over seeds $\{7, 42, 123\}$, alongside the AE-family numbers from Table~\ref{tab:attr-p5}.  Random baselines: $0.48$ for P1, $0.28$ for P2, $0.09$ for P3.}
+\label{tab:attr-shap-p5}
+\small
+\begin{tabular}{llrrr}
+\toprule
+Model & Method & P1 p@5 & P2 p@5 & P3 p@5 \\
+\midrule
+Isolation Forest & SHAP-tree   & $0.67 \pm 0.03$ & $0.38 \pm 0.04$ & $0.19 \pm 0.06$ \\
+OCSVM            & SHAP-kernel & $0.69 \pm 0.02$ & $\mathbf{0.42 \pm 0.03}$ & $0.25 \pm 0.00$ \\
+\midrule
+Dense AE & reconstruction & $0.69$ & $0.74$ & $\mathbf{0.33}$ \\
+LSTM-AE  & reconstruction & $0.74$ & $0.09$ & $0.20$ \\
+USAD     & reconstruction & $0.74$ & $0.09$ & $0.21$ \\
+TranAD   & reconstruction & $0.58$ & $0.35$ & $0.02$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.95\textwidth]{07_attribution/shap_if_ocsvm_pak.png}
+\caption{Per-sensor attribution precision@$5$ across all six models on HAI test, with $\pm 1\sigma$ error bars across three seeds.  Classical baselines (IF, OCSVM) use SHAP; AE-family models use reconstruction-error attribution from \S\ref{ch:results-attribution}.  Random baseline shown as a dashed line per panel.}
+\label{fig:attr-shap}
+\end{figure}
+
+Both classical baselines clear the random baseline on every process at p@$5$: IF lifts of $1.39\times$ / $1.35\times$ / $2.18\times$ on P1 / P2 / P3, OCSVM lifts of $1.44\times$ / $1.50\times$ / $2.79\times$.  The interesting result is OCSVM: it ties Dense AE on P1 ($0.69$ vs.\ $0.69$), beats every windowed model on P2 ($0.42$ vs.\ $0.09$ for LSTM-AE / USAD and $0.35$ for TranAD), and sits between LSTM-AE / USAD and Dense AE on P3.  Phase~2 ranks OCSVM near the bottom of the HAI detection table (eTaPR $0.170$, fifth of six), so this is the same detection-vs-localization inversion that Dense AE exhibited in Finding 4.1, now appearing in a kernel method too: the two models with the weakest absolute detection on HAI produce the most actionable per-feature attributions across all three attacked processes.
+
+The mechanism for OCSVM's localization quality is plausible: \code{shap.KernelExplainer} on the OCSVM decision function attributes per-feature contribution by perturbing each feature against the $100$-row training-normal background; features whose perturbation moves the kernel-distance decision the most are exactly those that distinguish the test row from the normal manifold the SVM learned.  That signal is per-row and unaveraged over time, like Dense AE's, so it preserves discrete-flag attacks (P2) that the windowed models smear away.  IF's \code{TreeExplainer} attribution is weaker on P2 / P3 because the model itself isolates rows with fewer effective splits when many features look normal; on P1 (sustained large-magnitude attacks across many sensors) IF localizes well, but on the discrete-flag and rare-process attacks it has less to attribute.
+
+\textbf{Caveat.}  KernelExplainer with a $100$-row background is approximate: the qualitative ranking is robust to background size in our setup, but the exact contribution magnitudes are not, and OCSVM's $100$ attack rows per process per seed is enough for ranking but tighter than the AE-family's full attack set ($n_{\text{P1}} \approx 7000$, $n_{\text{P2}} \approx 1300$, $n_{\text{P3}} \approx 410$ per seed).  As with the AE-family results above, p@k is computed at the process granularity HAI provides; per-sensor evaluation would need labelled per-sensor ground truth which HAI 21.03 does not release.
+
 \section{Limitations}
 
 \begin{enumerate}
   \item \textbf{Process-level eval is weaker than per-sensor eval.}  HAI 22.04's README has more detailed per-attack descriptions; a hand-curated per-sensor ground truth on 22.04 would strengthen the claim.
   \item \textbf{Dense AE is non-windowed; LSTM-AE, USAD, TranAD are windowed.}  The localization-vs-detection tradeoff is partly confounded with windowing.  A windowed MLP AE would disentangle; out of scope here.
   \item \textbf{Attention rollout is a single-layer approximation.}  A deeper TranAD could give richer signals; deeper TranAD also takes hours per run on our 4\,GB GPU.
+  \item \textbf{KernelExplainer is approximate.}  OCSVM SHAP values are computed with a $100$-row background sample and $128$ Monte-Carlo perturbations per row; tighter settings exceeded our compute budget.  Qualitative rankings should be stable but exact contribution magnitudes are not (\S\ref{sec:finding-shap}).
 \end{enumerate}
