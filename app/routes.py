@@ -15,8 +15,11 @@ from fastapi.responses import FileResponse
 from src.inference import load_artifact, score_dataframe
 from src.inference.adapters import (
     SchemaMismatchError,
-    load_morris_gas_file,
+    expected_input_kind,
+    load_file,
+    needs_projection,
 )
+from src.transfer.schema_align import load_feature_types, project_dataframe
 from src.utils import PROJECT_ROOT
 
 from .schemas import (
@@ -162,9 +165,14 @@ async def score(
 
     try:
         artifact = load_artifact(artifact_dir)
+        kind = expected_input_kind(artifact)
+        project = needs_projection(artifact)
+        # When the artifact was trained on canonical types, the adapter must
+        # return raw features (not pre-aligned), so we can project them next.
+        adapter_expected = None if project else artifact.feature_columns
         try:
-            adapter_result = load_morris_gas_file(
-                tmp_path, expected_features=artifact.feature_columns
+            adapter_result = load_file(
+                tmp_path, kind=kind, expected_features=adapter_expected
             )
         except SchemaMismatchError as e:
             raise HTTPException(
@@ -180,9 +188,24 @@ async def score(
         except ValueError as e:
             raise HTTPException(status_code=400, detail={"error": "unsupported_file", "detail": str(e)}) from e
 
+        features_df = adapter_result.features
+        if project:
+            types_yaml = load_feature_types()
+            if kind not in types_yaml:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"feature_types.yaml has no entry for kind '{kind}'",
+                )
+            features_df = project_dataframe(
+                features_df,
+                feat_to_type=types_yaml[kind],
+                target_types=list(artifact.feature_columns),
+                aggregations=types_yaml.get("aggregations", {}),
+            )
+
         result = score_dataframe(
             artifact,
-            adapter_result.features,
+            features_df,
             labels=adapter_result.labels,
         )
 

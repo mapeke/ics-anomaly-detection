@@ -24,7 +24,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.inference import load_artifact, score_dataframe  # noqa: E402
-from src.inference.adapters import load_morris_gas_file  # noqa: E402
+from src.inference.adapters import (  # noqa: E402
+    expected_input_kind,
+    load_file,
+    needs_projection,
+)
+from src.transfer.schema_align import load_feature_types, project_dataframe  # noqa: E402
 from src.utils import set_seed  # noqa: E402
 
 
@@ -59,10 +64,27 @@ def main() -> None:
         f"threshold={artifact.threshold:.6f} ({artifact.threshold_strategy})"
     )
 
-    result = load_morris_gas_file(args.input, expected_features=artifact.feature_columns)
-    print(f"   input {args.input}  rows={len(result.features)}")
+    kind = expected_input_kind(artifact)
+    project = needs_projection(artifact)
+    result = load_file(
+        args.input,
+        kind=kind,
+        expected_features=None if project else artifact.feature_columns,
+    )
+    print(f"   input {args.input}  kind={kind}  rows={len(result.features)}")
 
-    score_result = score_dataframe(artifact, result.features, labels=result.labels)
+    features_df = result.features
+    if project:
+        types_yaml = load_feature_types()
+        features_df = project_dataframe(
+            features_df,
+            feat_to_type=types_yaml[kind],
+            target_types=list(artifact.feature_columns),
+            aggregations=types_yaml.get("aggregations", {}),
+        )
+        print(f"   projected -> {list(features_df.columns)}")
+
+    score_result = score_dataframe(artifact, features_df, labels=result.labels)
     print(
         f"   scored {len(score_result.scores)} "
         f"{'windows' if score_result.windowed else 'rows'}  "

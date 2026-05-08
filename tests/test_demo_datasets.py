@@ -60,7 +60,7 @@ def saved_artifact_and_demo(tmp_roots):
     artifact = ModelArtifact(
         model=model, scaler=scaler, threshold=threshold,
         threshold_strategy="val_percentile", threshold_percentile=95.0,
-        feature_columns=feature_cols, trained_on="synthetic",
+        feature_columns=feature_cols, trained_on="morris",
         config_hash="smoke", seed=42,
     )
     art_dir = ck_root / "smoke_morris_if" / "seed42"

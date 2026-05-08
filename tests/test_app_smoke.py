@@ -55,7 +55,7 @@ def saved_artifact(tmp_roots):
     artifact = ModelArtifact(
         model=model, scaler=scaler, threshold=threshold,
         threshold_strategy="val_percentile", threshold_percentile=95.0,
-        feature_columns=feature_cols, trained_on="synthetic",
+        feature_columns=feature_cols, trained_on="morris",
         config_hash="smoke", seed=42,
     )
     art_dir = ck_root / "smoke_morris_if" / "seed42"
@@ -84,7 +84,7 @@ def test_artifacts_lists_saved(client, saved_artifact):
     a = data["artifacts"][0]
     assert a["id"] == saved_artifact["artifact_id"]
     assert a["model_name"] == "isolation_forest"
-    assert a["trained_on"] == "synthetic"
+    assert a["trained_on"] == "morris"
     assert a["feature_count"] == 3
 
 
@@ -152,3 +152,77 @@ def test_score_artifact_id_traversal_rejected(client, saved_artifact):
         )
     # Resolves outside CHECKPOINTS_ROOT -> 400.
     assert r.status_code == 400
+
+
+@pytest.fixture
+def transfer_artifact_morris_to_hai(tmp_roots):
+    """Synthetic morris__to__hai transfer artifact + matching HAI raw fixture.
+
+    The artifact's feature_columns are the 6 canonical types so the routes
+    layer is forced to project the raw HAI input via schema_align.
+    """
+    ck_root, _ = tmp_roots
+    target_types = [
+        "control_signal", "pressure", "pump_state",
+        "setpoint", "system_state", "valve_position",
+    ]
+    rng = np.random.default_rng(0)
+    T, F = 400, len(target_types)
+    X = rng.normal(size=(T, F)).astype(np.float32)
+    y = np.zeros(T, dtype=np.int8)
+    X[100:120] += 5.0
+    y[100:120] = 1
+
+    scaler = MinMaxScaler().fit(X[:250])
+    model = build("isolation_forest").fit(scaler.transform(X[:250]).astype(np.float32))
+    val_scores = model.score(scaler.transform(X[250:300]).astype(np.float32))
+    threshold = float(np.percentile(val_scores, 95.0))
+
+    artifact = ModelArtifact(
+        model=model, scaler=scaler, threshold=threshold,
+        threshold_strategy="val_percentile", threshold_percentile=95.0,
+        feature_columns=target_types, trained_on="morris__to__hai",
+        config_hash="smoke-transfer", seed=42,
+        extra={"source_dataset": "morris", "target_dataset": "hai",
+               "target_types": target_types},
+    )
+    art_dir = ck_root / "smoke_transfer_if" / "seed42"
+    save_artifact(artifact, art_dir)
+
+    # Raw HAI fixture: pick one feature per canonical type from feature_types.yaml.
+    raw_to_type = {
+        "P2_HILout": "control_signal",
+        "P1_PIT01":  "pressure",
+        "P1_PP01AD": "pump_state",
+        "P1_STSP":   "setpoint",
+        "P2_24Vdc":  "system_state",
+        "P1_FCV01Z": "valve_position",
+    }
+    type_to_raw = {v: k for k, v in raw_to_type.items()}
+    raw_df = pd.DataFrame(
+        {type_to_raw[t]: X[:, i] for i, t in enumerate(target_types)}
+    )
+    raw_df["label"] = y
+    fixture_csv = ck_root.parent / "hai_fixture.csv"
+    raw_df.to_csv(fixture_csv, index=False)
+
+    return {"artifact_id": "smoke_transfer_if/seed42", "csv": fixture_csv}
+
+
+def test_score_transfer_artifact_projects_raw_hai(client, transfer_artifact_morris_to_hai):
+    """A morris__to__hai artifact applied to raw HAI input goes through
+    schema_align.project_dataframe before scoring. Must return 200, not the
+    400 schema mismatch the un-fixed pipeline produced."""
+    with open(transfer_artifact_morris_to_hai["csv"], "rb") as f:
+        r = client.post(
+            "/score",
+            data={"artifact_id": transfer_artifact_morris_to_hai["artifact_id"]},
+            files={"file": ("hai.csv", f, "text/csv")},
+        )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["n_input_rows"] == 400
+    assert body["n_scored"] == 400
+    assert body["metrics"] is not None
+    f1 = body["metrics"]["pointwise"]["f1"]
+    assert f1 is not None and 0.0 <= f1 <= 1.0

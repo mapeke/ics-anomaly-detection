@@ -99,6 +99,55 @@ def _detect_col(df: pd.DataFrame, candidates: tuple[str, ...]) -> str | None:
     return None
 
 
+def prepare_hai_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalise a raw HAI DataFrame to the canonical schema.
+
+    Drops non-numeric timestamp columns, then derives ``label`` and
+    ``attack_id`` from whichever source is present:
+
+    1. Per-process ``attack*`` flags (raw HAI release files).
+    2. A pre-existing single ``label`` column (cleaned demo CSVs).
+
+    Raises :class:`KeyError` if neither is present so callers (CLI, web app)
+    can surface a clear error.
+    """
+    df = df.copy()
+
+    t = _detect_col(df, HAI_TIME_COLS)
+    if t is not None and not pd.api.types.is_numeric_dtype(df[t]):
+        df.drop(columns=[t], inplace=True)
+
+    all_flags = [c for c in df.columns if c.lower().startswith("attack")]
+    if all_flags:
+        # Consolidate per-process attack flags into a single `label` and keep the
+        # first triggered per-process flag as the attack-id string. The bare
+        # `attack` column (a global aggregate) is excluded from attack-id
+        # resolution so we recover the semantically meaningful P1/P2/P3 tags.
+        per_process = [c for c in all_flags if c.lower() != "attack"]
+        flag_mat = df[all_flags].to_numpy()
+        df["label"] = (flag_mat.sum(axis=1) > 0).astype(np.int8)
+        if per_process:
+            pp_mat = df[per_process].to_numpy()
+            first_hit = np.argmax(pp_mat > 0, axis=1)
+            attack_id = np.array(per_process)[first_hit]
+            pp_any = pp_mat.sum(axis=1) > 0
+            attack_id = np.where(pp_any, attack_id, "attack")
+            df["attack_id"] = np.where(df["label"].to_numpy() > 0, attack_id, "normal")
+        else:
+            df["attack_id"] = np.where(df["label"].to_numpy() > 0, "attack", "normal")
+        df.drop(columns=all_flags, inplace=True)
+    elif "label" in df.columns:
+        df["label"] = df["label"].fillna(0).astype(np.int8).clip(0, 1)
+        df["attack_id"] = np.where(df["label"].to_numpy() > 0, "attack", "normal")
+    else:
+        raise KeyError(
+            "No HAI label column found. Expected per-process 'attack*' flags "
+            f"or a single 'label' column; got columns: {list(df.columns)}"
+        )
+
+    return df.reset_index(drop=True)
+
+
 def _load_hai_raw() -> tuple[pd.DataFrame, pd.DataFrame]:
     """Back-compat: return (train_df, test_df) with `label` column but no split info.
 
@@ -117,39 +166,8 @@ def _load_hai_raw() -> tuple[pd.DataFrame, pd.DataFrame]:
     if not train_csvs or not test_csvs:
         raise FileNotFoundError(f"No train*/test* CSVs found in {root}.")
 
-    train_df = _read_hai_csvs(train_csvs)
-    test_df = _read_hai_csvs(test_csvs)
-
-    # Drop timestamp columns if non-numeric.
-    for name in ("train", "test"):
-        df = train_df if name == "train" else test_df
-        t = _detect_col(df, HAI_TIME_COLS)
-        if t is not None and not pd.api.types.is_numeric_dtype(df[t]):
-            df.drop(columns=[t], inplace=True)
-
-    # Consolidate per-process attack flags into a single `label` and keep the
-    # first triggered per-process flag as the attack-id string. The bare
-    # `attack` column (a global aggregate) is excluded from attack-id
-    # resolution so we recover the semantically meaningful P1/P2/P3 tags.
-    for df in (train_df, test_df):
-        all_flags = [c for c in df.columns if c.lower().startswith("attack")]
-        if not all_flags:
-            continue
-        per_process = [c for c in all_flags if c.lower() != "attack"]
-        flag_mat = df[all_flags].to_numpy()
-        df["label"] = (flag_mat.sum(axis=1) > 0).astype(np.int8)
-        if per_process:
-            pp_mat = df[per_process].to_numpy()
-            first_hit = np.argmax(pp_mat > 0, axis=1)
-            attack_id = np.array(per_process)[first_hit]
-            # Rows where no per-process flag fired but `attack` did: tag "attack".
-            pp_any = pp_mat.sum(axis=1) > 0
-            attack_id = np.where(pp_any, attack_id, "attack")
-            df["attack_id"] = np.where(df["label"].to_numpy() > 0, attack_id, "normal")
-        else:
-            df["attack_id"] = np.where(df["label"].to_numpy() > 0, "attack", "normal")
-        df.drop(columns=all_flags, inplace=True)
-
+    train_df = prepare_hai_frame(_read_hai_csvs(train_csvs))
+    test_df = prepare_hai_frame(_read_hai_csvs(test_csvs))
     return train_df, test_df
 
 

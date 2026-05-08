@@ -50,15 +50,15 @@ def _read_any(path: Path) -> pd.DataFrame:
 
 def load_morris_gas_file(
     path: str | Path,
-    expected_features: list[str],
+    expected_features: list[str] | None = None,
 ) -> AdapterResult:
-    """Load a Morris gas-pipeline file and align it to ``expected_features``.
+    """Load a Morris gas-pipeline file into the canonical adapter schema.
 
-    ``expected_features`` is normally ``artifact.feature_columns`` — the exact
-    column order the model was trained on. This function reads the file,
-    runs it through :func:`prepare_morris_frame`, then validates and reorders.
-    If any expected column is missing in the uploaded file, we raise
-    :class:`SchemaMismatchError` so the UI can report the user's error.
+    When ``expected_features`` is provided, validates that every expected
+    column is present and reorders to match. When ``None``, returns all clean
+    feature columns in source order (the routes layer then validates after
+    any optional projection step). Missing-column errors raise
+    :class:`SchemaMismatchError`.
     """
     path = Path(path)
     if not path.exists():
@@ -68,12 +68,16 @@ def load_morris_gas_file(
     prepared = prepare_morris_frame(raw)
 
     actual = [c for c in prepared.columns if c not in ("label", "attack_id")]
-    missing = [c for c in expected_features if c not in actual]
-    unexpected = [c for c in actual if c not in expected_features]
-    if missing:
-        raise SchemaMismatchError(missing=missing, unexpected=unexpected)
+    if expected_features is not None:
+        missing = [c for c in expected_features if c not in actual]
+        unexpected = [c for c in actual if c not in expected_features]
+        if missing:
+            raise SchemaMismatchError(missing=missing, unexpected=unexpected)
+        feature_cols = list(expected_features)
+    else:
+        feature_cols = actual
 
-    features = prepared[list(expected_features)].astype(np.float32).reset_index(drop=True)
+    features = prepared[feature_cols].astype(np.float32).reset_index(drop=True)
 
     labels = prepared["label"].to_numpy(dtype=np.int8) if "label" in prepared.columns else None
     attack_ids = (
