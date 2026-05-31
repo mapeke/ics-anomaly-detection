@@ -1,47 +1,93 @@
-# External-Validation Web App
+# Demo Web App — How to Run
 
-Thin FastAPI wrapper over `src.inference` for scoring unseen Morris gas-pipeline ARFF/CSV files against a saved model artifact.
+Thin FastAPI wrapper over `src.inference`. Loads a trained model artifact, accepts an uploaded ICS sensor file (or a bundled sample), runs the same scoring pipeline used in the experiments, and returns metrics + per-row anomaly scores.
+
+The app is what backs the cross-dataset story in the thesis: same artifact, same input format, swap the artifact's `trained_on` and watch the metrics collapse.
+
+## Prerequisites
+
+1. Python deps installed:
+   ```powershell
+   pip install -r requirements.txt
+   ```
+2. At least one model artifact saved under `results/checkpoints/`. Either run an experiment yourself —
+   ```powershell
+   python -m experiments.run experiments/configs/baseline_morris_isolation_forest.yaml
+   ```
+   — or use whichever artifacts are already committed (13 ship with the repo: HAI / Morris baselines + Morris→HAI transfer for IF and Dense AE).
+3. (Optional) bundled demo CSVs at `data/demo/`. Already present; regenerate with `python -m scripts.build_demo_datasets` if needed.
 
 ## Run
 
-```bash
-# 1. Train at least one artifact so there is something to select.
-# Add artifact.save_dir to any YAML in experiments/configs/, then:
-python -m experiments.run experiments/configs/<your_config>.yaml
-
-# 2. Launch the app:
-uvicorn app.main:app --reload
-# Open http://localhost:8000
+```powershell
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
+
+Then:
+
+- **UI**: <http://127.0.0.1:8000/>
+- **Swagger / OpenAPI**: <http://127.0.0.1:8000/docs>
+
+Add `--reload` while developing. Don't bind to `0.0.0.0` — the app has no auth.
+
+## Demo scenarios
+
+Each row is one click in the UI. The expected metrics below are what the committed artifacts produce on the bundled datasets — useful for a defense walkthrough.
+
+| # | Story | Upload | Artifact | Expected |
+|---|---|---|---|---|
+| 1 | Native model on its own data | `morris_gas_test_sample.csv` | `baseline_morris_isolation_forest/seed42` | P=0.910 R=0.043 F1=0.082 |
+| 2 | Native model on its own data | `hai_test_sample.csv` | `baseline_hai_isolation_forest/seed42`    | P=0.455 R=0.135 F1=0.209 |
+| 3 | **Cross-dataset transfer collapses** | `hai_test_sample.csv` | `transfer_morris_to_hai_isolation_forest/seed42` | P=0.032 R=1.0 F1=0.062 — model flags every row, precision = the dataset's base attack rate |
+| 4 | Schema mismatch (input validation) | `hai_test_sample.csv` | `baseline_morris_isolation_forest/seed42` | 400 with `missing` / `unexpected` column lists |
+
+Scenarios 1+3 share an input file. Only the artifact's `trained_on` differs — that's the whole point.
+
+Files for the upload path are at `presentation/hai_test_sample.csv` and `presentation/morris_gas_test_sample.csv` (copies of the bundled datasets, in a folder that's easy to browse to from the file picker).
+
+## How input is routed
+
+The artifact tells the app what to expect. There is no "source dataset" form field — it's all inferred from the saved manifest:
+
+1. **Adapter dispatch** — `expected_input_kind(artifact)` reads `manifest.extra.target_dataset` (falling back to parsing `trained_on`). Returns `"hai"` or `"morris"`. The matching adapter (`src/inference/adapters/{hai,morris_gas}.py`) reads the file and returns clean features.
+2. **Optional projection** — if the artifact was trained on canonical type-vectors (any `*__to__*` transfer artifact), `schema_align.project_dataframe` collapses the raw input to the 6 canonical types using `data/feature_types.yaml` before scoring.
+3. **Score** — `src.inference.score_dataframe` applies the artifact's scaler, windows if required, calls `model.score`, then evaluates pointwise / point-adjust / eTaPR if labels are present.
+
+So a `transfer_morris_to_hai_*` artifact paired with raw HAI data: adapter loads HAI columns, projection collapses 79 sensors → 6 types, model scores. A `baseline_morris_*` artifact with the same raw HAI data: the dispatcher sees `target_dataset=morris`, the Morris adapter rejects it with a schema-mismatch error.
 
 ## Endpoints
 
-- `GET /artifacts` — list saved artifacts discovered under `results/checkpoints/`.
-- `GET /demo-datasets` — list bundled demo datasets discovered under `data/demo/manifest.json`.
-- `POST /score` — multipart form fields:
+- `GET /artifacts` — list saved artifacts under `results/checkpoints/`. Each entry has the model name, `trained_on`, feature count, threshold, config hash, seed, and git SHA from training.
+- `GET /demo-datasets` — list bundled samples under `data/demo/`.
+- `POST /score` (multipart) — fields:
   - `artifact_id` (required)
-  - **exactly one** of `file` (`.arff` or `.csv` upload) or `bundled_dataset` (id from `/demo-datasets`)
-  Returns JSON `{artifact, n_input_rows, n_scored, n_flagged, threshold, metrics, preview, download_url}`.
-- `GET /downloads/{run_id}/scores.parquet` — download the full per-row scores + flags (+ labels when present).
-- `GET /docs` — FastAPI-generated OpenAPI page.
+  - **exactly one of**: `file` (.arff or .csv upload, ≤ 50 MB) or `bundled_dataset` (id from `/demo-datasets`)
+- `GET /downloads/{run_id}/scores.parquet` — full per-row score + flag (+ label, if the input had one).
+- `GET /docs` — FastAPI's auto-generated Swagger UI.
 
-## Bundled demo datasets
+## Score sign convention
 
-The app ships with two test-split slices under `data/demo/` so visitors can score the canonical thesis datasets in one click without acquiring the source data themselves:
+`score(x) = -decision_function(x)` for IF / OCSVM, reconstruction error for AE-family models. Either way: **higher = more anomalous**. The preview table shows raw scores, so negative values for IF/OCSVM mean "the model thinks this row is normal." `flag = score >= threshold` is the binary decision.
 
-- **`hai_test_sample.csv`** — ~15k contiguous rows from the HAI 21.03 test split with both attack and normal rows. Native sensor column names (`P1_*`, `P2_*`, `P3_*`, `P4_*`) preserved. Use with HAI-trained artifacts.
-- **`morris_gas_test_sample.csv`** — ~15k contiguous rows from the Morris gas-pipeline test split. `IanArffDataset.arff` schema preserved. Use with Morris-trained or HAI→Morris transfer artifacts.
+## Adapters
 
-Both are produced deterministically (seed=42, first contiguous test-window of length ≤ 15000 containing both classes) by `python -m scripts.build_demo_datasets`. Re-running yields byte-identical files. The manifest at `data/demo/manifest.json` is the source of truth for `/demo-datasets`.
+- **`hai`** — CSVs with HAI 21.03 sensor columns. Accepts both the raw release files (per-process `attack*` flag columns) and the cleaned demo slice (single `label` column). Schema normalisation goes through `src.data_loader.prepare_hai_frame` so it's bit-identical to training.
+- **`morris_gas`** — ARFF or CSV with `IanArffDataset.arff` conventions (`binary result` label or `label`, the standard 16 feature columns). Goes through `src.data_loader.prepare_morris_frame`.
+
+Both adapters raise `SchemaMismatchError` (mapped to HTTP 400 with explicit `missing` / `unexpected` arrays) when the upload's columns don't match what the artifact expects.
 
 ## Scope and caveats
 
-- **Localhost only.** No authentication, no TLS. Do not expose this to a network.
-- **50 MB upload cap.** Enforced server-side while streaming the upload.
-- **Whole file in memory.** Morris gas-pipeline captures are well under this cap; larger datasets would need a streaming rewrite.
-- **Threshold is frozen from training.** The saved artifact's threshold is applied as-is. Scoring a cross-testbed file with a source-fitted threshold is a known limitation of the transfer setting — see `thesis/chapters/07_discussion.tex` for the discussion of threshold-transfer semantics.
-- **Scaler is not re-validated.** The MinMaxScaler was fit on the training dataset's normal split. For a new file we assume the user is providing evaluation data only; no leak check is re-performed.
+- **Localhost only.** No auth, no TLS. Don't expose to a network.
+- **50 MB upload cap**, enforced while streaming.
+- **Whole file in memory.** Fine for HAI 21.03 / Morris; larger datasets would need a streaming rewrite.
+- **Threshold is frozen from training.** Cross-testbed scoring uses the source-fitted threshold; the discussion in `thesis/chapters/07_discussion.tex` explains why this is a deliberate methodological choice.
+- **Scaler not re-validated** at inference. We assume the user provides evaluation data; no leak check is re-performed.
 
-## Adapter scope
+## Stop the server
 
-- **`morris_gas`** — ARFF/CSV with the canonical `IanArffDataset.arff` column conventions (`binary result` label, fixed feature names). Validates exact column match against the artifact's `feature_columns`.
+`Ctrl+C` in the terminal running uvicorn. If you started it as a background task and lost the handle:
+
+```powershell
+Get-NetTCPConnection -LocalPort 8000 | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
+```
