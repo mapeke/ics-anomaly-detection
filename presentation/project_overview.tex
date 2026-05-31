@@ -1,0 +1,439 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=2.4cm]{geometry}
+\usepackage{microtype}
+\usepackage{parskip}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{fancyvrb}
+\usepackage{hyperref}
+
+\emergencystretch=3em
+\hyphenpenalty=1000
+\sloppy
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  urlcolor=blue!50!black,
+  pdftitle={ICS Anomaly Detection Diploma --- Project Overview and Code Tour},
+  pdfauthor={Daniyal Mapeke},
+}
+
+\titleformat{\section}{\Large\bfseries}{\thesection}{0.8em}{}
+\titleformat{\subsection}{\large\bfseries}{\thesubsection}{0.8em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries}{\thesubsubsection}{0.8em}{}
+
+\titlespacing*{\section}{0pt}{1.6em}{0.6em}
+\titlespacing*{\subsection}{0pt}{1.2em}{0.4em}
+
+\newcommand{\code}[1]{\texttt{#1}}
+
+\fvset{fontsize=\small, frame=single, framesep=4pt, xleftmargin=8pt, xrightmargin=8pt}
+
+\setlist[itemize]{itemsep=2pt, topsep=4pt}
+\setlist[enumerate]{itemsep=2pt, topsep=4pt}
+
+\begin{document}
+
+\begin{titlepage}
+  \centering
+  \vspace*{4cm}
+  {\Huge\bfseries ICS Anomaly Detection Diploma\par}
+  \vspace{1cm}
+  {\Large A Plain-English Project Overview\\and Code Tour\par}
+  \vspace{3cm}
+  {\large Daniyal Mapeke\par}
+  \vspace{0.5cm}
+  {\large May 2026\par}
+  \vfill
+  {\small This document accompanies the diploma thesis\\
+  ``Cross-Testbed Generalization and Per-Sensor Attribution\\
+  of Anomaly Detectors for Industrial Control Systems.''\par}
+\end{titlepage}
+
+\tableofcontents
+\clearpage
+
+%======================================================================
+\part*{Part I --- Catching Cyberattacks on Factories:\\What This Diploma Is Actually About}
+\addcontentsline{toc}{section}{Part I --- Catching Cyberattacks on Factories}
+%======================================================================
+
+\section{The world this project lives in}
+
+Most people picture cybersecurity as somebody stealing your credit card or locking your laptop with ransomware. That is only half the field. The other half --- and the half that this thesis lives in --- is about computers that do not just hold information, they run \textbf{physical things in the real world}: water-treatment plants, power grids, oil pipelines, chemical reactors, factory assembly lines.
+
+Every modern factory or power station has hundreds of sensors (measuring pressure, temperature, flow, valve position, motor speed) and hundreds of actuators (pumps, valves, breakers, heaters). Sitting between the sensors and the actuators is a layer of small specialized computers --- collectively called an \textbf{Industrial Control System}, or \textbf{ICS} --- that reads the sensors and decides what the actuators should do. The job of an operator in the control room is to keep an eye on this and intervene when something looks off.
+
+When somebody attacks an ICS, the consequences are not abstract. A few real examples:
+
+\begin{itemize}
+  \item \textbf{Stuxnet (2010).} A piece of malware physically destroyed centrifuges in an Iranian uranium-enrichment plant by quietly making them spin slightly wrong, while displaying perfectly normal-looking numbers to the operators watching the screens.
+  \item \textbf{Ukraine power grid (2015).} Attackers logged into the control software of three regional electricity distributors and clicked ``open'' on circuit breakers, blacking out about 225{,}000 customers in the middle of winter.
+  \item \textbf{Maroochy Shire, Australia (2000).} A disgruntled contractor used a stolen radio to open sewage valves, dumping roughly a million litres of raw sewage into parks and rivers.
+\end{itemize}
+
+In every one of these cases, the attack was \emph{visible in the sensor readings} if anybody had been watching the right pattern. That is the underlying premise of the whole research field: \textbf{if we can teach a computer what ``normal'' looks like in a factory's sensor data, it can shout when something looks ``not normal.''} That technique is called \textbf{anomaly detection}, and it is the central object of this thesis.
+
+\section{Why this is a research problem at all}
+
+You would think the obvious approach --- ``build a machine-learning model that learns normal and flags abnormal'' --- would already be solved. Open any academic paper from the last five years and the numbers look amazing. Detection accuracy of 95\%, 97\%, 99\%. If those numbers were real, the problem would be over and security companies would just buy the best model and install it everywhere.
+
+In practice, they do not, because \textbf{the numbers in the papers do not survive contact with reality.} This thesis is about quantifying \emph{exactly how} they do not survive, and giving the field an honest answer instead of a misleading headline.
+
+There are three specific ways the published numbers mislead.
+
+\subsection{Trap 1 --- The scoreboard is rigged in the model's favour}
+
+Imagine grading a security guard by counting how many seconds they spent looking at the right monitor during a break-in. If the break-in lasted ten minutes and the guard glanced at the monitor for one second, you might say ``they detected it'' and give them full marks. That is roughly what the most popular evaluation metric in this field --- \textbf{point-adjust F1} --- does. As long as the model flags \emph{any} one moment during an attack, it gets full credit for the whole attack, even if the rest of its alarms are nonsense.
+
+A 2022 critique showed something embarrassing: under this metric, a model that flags random points scores higher than a real detector. So the entire field's standings could be partly a measurement artefact.
+
+A more honest metric, called \textbf{eTaPR}, scores models on how much of the attack they catch and how fast --- like grading the guard on what fraction of the break-in they were actually watching, weighted by how quickly they noticed. The thesis re-runs every model under both metrics and shows how rankings shuffle.
+
+\subsection{Trap 2 --- Models that only work on their own home turf}
+
+Every published model is trained on one specific factory testbed (HAI, SWaT, WADI, Morris --- these are public datasets built by researchers) and tested on the same testbed. That is like a self-driving car company claiming ``99\% safe'' because the car drove flawlessly on the \emph{one test track} it was trained on. Nobody would buy that car.
+
+The thesis takes models trained on a Korean power-plant testbed (HAI) and tests them on a gas-pipeline testbed (Morris), and vice versa. This had basically never been done end-to-end before, partly because the two datasets do not share sensors --- HAI has 79 features about water-cooling and turbines, Morris has 16 features about gas-pipeline Modbus traffic. They are not even speaking the same language.
+
+To bridge them, the thesis introduces a \textbf{type vector}: instead of comparing ``sensor 47 in HAI'' with ``sensor 11 in Morris,'' it tags every sensor by what \emph{kind} of thing it is --- pressure, pump state, setpoint, valve position, control signal --- and projects both datasets into that shared 6-dimensional space. A model trained to recognise ``weird pressure behaviour'' in HAI can then be asked the same question in Morris.
+
+\subsection{Trap 3 --- ``We caught the attack'' does not tell you what the attack was}
+
+In a real factory with 500 sensors, an alarm that says ``something is wrong somewhere'' is almost useless. An operator needs to know \emph{which} sensor is misbehaving so they can act --- close that valve, restart that pump, isolate that subsystem. The thesis calls this \textbf{localization} (versus plain \textbf{detection}), and it tests whether each model can also point at the right culprit.
+
+The way to test this: HAI's authors helpfully labelled which physical subsystem (water loop, turbine controller, etc.) each attack targeted. The thesis evaluates whether each model's ``suspicion score'' per sensor lines up with the actually-attacked subsystem. Some models that are great at detection turn out to be terrible at localization, which is a tradeoff nobody had quantified before.
+
+\section{What was actually built}
+
+To run these experiments fairly, the thesis cannot just download six different open-source models written in six different coding styles by six different researchers and trust them. Apples-to-apples requires apples --- so the whole codebase is built around a single abstract interface that every model implements:
+
+\begin{itemize}
+  \item \code{fit} --- learn what normal looks like.
+  \item \code{score} --- given new data, output a ``weirdness'' number for each moment in time.
+  \item \code{attribute} --- given new data, output a per-sensor ``blame'' number so you can tell \emph{which} sensor looks weird.
+\end{itemize}
+
+Six models live behind that interface:
+
+\begin{itemize}
+  \item Two \textbf{classical baselines} (Isolation Forest and One-Class SVM) --- well-understood techniques from the 2000s.
+  \item Two \textbf{autoencoder models} (Dense and LSTM) --- neural networks that learn to reconstruct normal data; anything they fail to reconstruct is suspicious.
+  \item Two \textbf{state-of-the-art transformer-style models} (USAD and TranAD) --- published in 2020 and 2022 at top venues, supposedly the best the field has.
+\end{itemize}
+
+Plus three evaluation metrics implemented from scratch with unit tests (so the comparison is provably the metrics' fault, not a bug), a system for ``scaler leak'' prevention (a subtle bookkeeping error that inflates published results --- the thesis adds an assertion that crashes if anyone makes it), and the type-vector projection for cross-dataset transfer.
+
+There is also a \textbf{demo web app} that lets a non-researcher upload sensor data, pick a model, and see what gets flagged --- closing the loop between ``research paper figures'' and ``thing you can actually click on.''
+
+\section{The surprising findings}
+
+Three findings stand out, and each is the kind of result that would force a security team to change how they evaluate vendors.
+
+\paragraph{Finding 1: A naive cross-factory deployment collapses to coin-flipping.}
+When you take a model trained on HAI and use HAI's own ``alarm threshold'' on Morris, the model effectively just predicts ``everything is normal'' or ``everything is an attack'' depending on which class is more common in Morris. The published F1 number reflects the new factory's base rates, not the model's intelligence. \textbf{Recalibrating the threshold on a sample of the new factory's normal data fixes most of this} --- and the modern transformer models finally pull ahead of the classical baselines, achieving roughly 0.38--0.44 on the honest eTaPR metric. Not 0.95. Not even 0.7. But it is an honest number, and it is the first time a clear modern-vs-classical separation has been measured under realistic conditions.
+
+\paragraph{Finding 2: A within-factory ablation reveals targeted blindness.}
+When the thesis ``hides'' one subsystem's sensors at training time (say, the turbine controller's sensors) and then tests on attacks aimed at that subsystem, the detector goes blind \emph{only to those attacks} --- its accuracy on turbine attacks crashes from 0.41 to 0.03, while remaining roughly fine elsewhere. This shows that what looks like a ``general-purpose anomaly detector'' is actually a collection of subsystem-specific detectors that happen to share weights.
+
+\paragraph{Finding 3: The worst detector is the best localizer.}
+The simple Dense autoencoder, which underperforms the fancy transformers on raw detection, is the \emph{only} model in the comparison whose per-sensor blame scores beat random guessing on every subsystem tested. The transformers concentrate their attention on one subsystem regardless of which one was actually attacked --- meaning if you bought ``the best detector'' by the headline number, you would get the worst tool for telling your operators where to look. The fancy ``attention-based explanation'' the transformer literature is excited about turned out to produce \emph{numerically identical} attributions to the simple ``reconstruction error'' approach, which is itself a notable null result.
+
+\section{Why this matters beyond the thesis}
+
+The thesis is deliberately not trying to invent a new model. The world already has more anomaly-detection models than it knows what to do with. What the field has been short of is \textbf{honest measurement}: a way for a security team evaluating a vendor --- or a reviewer evaluating a new paper --- to ask the right questions and get apples-to-apples answers.
+
+The practical takeaway is a short, concrete checklist:
+
+\begin{enumerate}
+  \item \textbf{Do not trust a single headline F1.} Ask for the model's score under at least two different metrics, including an event-aware one.
+  \item \textbf{Do not deploy a model with a threshold tuned on its training factory.} Always re-calibrate on a sample of \emph{your} normal operations before going live.
+  \item \textbf{Test detection and localization separately.} ``Catches attacks'' and ``tells you which sensor to look at'' are different abilities and the best model at one is often not the best at the other.
+\end{enumerate}
+
+These three recommendations sound obvious once stated. The contribution of the thesis is showing --- with numbers, on real datasets, with reproducible code --- that the current research literature largely ignores all three, and that ignoring them inflates published performance by a margin that, in some cases, is the difference between a useful detector and a coin flip.
+
+That is the diploma in one sentence: \textbf{a measurement project that exposes how much of the field's reported progress is real and how much is an artefact of how progress is measured --- and ships the code so anyone can re-run the measurement on their own systems.}
+
+\clearpage
+
+%======================================================================
+\part*{Part II --- A Tour of the Codebase}
+\addcontentsline{toc}{section}{Part II --- A Tour of the Codebase}
+%======================================================================
+
+The repo is split into \textbf{seven top-level directories that each play a clear role}, and the design follows one simple rule: \emph{every experiment must be reproducible from a config file, with no hidden state.} Nothing important happens in a notebook; the notebooks just plot.
+
+\section{The root of the repo}
+
+\begin{Verbatim}
+DiplomaDaniyal/
+    CLAUDE.md                 persistent instructions for the AI coding assistant
+    PROJECT_PLAN.md           high-level roadmap (phases, deadlines, decisions)
+    README.md                 human-facing intro
+    pyproject.toml            Python project metadata (ruff, pytest, mypy config)
+    requirements.txt          pinned dependencies
+    .pre-commit-config.yaml   auto-formatters and linters that run on every commit
+    .gitignore                what NOT to commit (datasets, checkpoints, caches)
+    src/                      all the actual research code
+    experiments/              config-driven experiment runners
+    tests/                    pytest suite
+    notebooks/                thin, presentation-only Jupyter notebooks
+    app/                      the demo web application
+    scripts/                  one-off utilities
+    data/                     datasets (the heavy stuff is gitignored)
+    results/                  everything the experiments produce
+    thesis/                   the LaTeX source of the actual diploma
+    presentation/             defense slides and supporting docs
+    tools/                    repo-maintenance utilities
+\end{Verbatim}
+
+The two most important files at the top are \code{CLAUDE.md} (the constitution of the project --- design rules, scope boundaries, what ``done'' means) and \code{pyproject.toml} (which makes the project pip-installable and configures all the developer tooling in one place). The \code{.pre-commit-config.yaml} is what enforces code style automatically; you cannot commit ugly code by accident.
+
+\section{\texttt{src/} --- the research code}
+
+This is where every piece of logic lives. The cardinal rule is: \textbf{if a number ends up in the thesis, the function that produced it lives in \code{src/}, has a test, and was called from a config-driven experiment.} Notebooks only plot.
+
+\begin{Verbatim}
+src/
+    __init__.py
+    config.py             the dataclass that describes a single experiment
+    data_loader.py        loading HAI and Morris into a common schema
+    preprocessing.py      scaling, sliding windows, train/val/test splits
+    utils.py              seeding, paths, logging --- the boring foundations
+    models/               every anomaly detector (6 of them)
+    evaluation/           the three scoring metrics
+    attribution/          localization evaluation (which sensor is to blame?)
+    explain/              SHAP-based explanations for classical models
+    transfer/             cross-dataset transfer (HAI/Morris) and LOPO
+    inference/            loading a trained model and scoring fresh data
+\end{Verbatim}
+
+\subsection{\texttt{config.py} --- the contract every experiment obeys}
+
+A single Python file with five small dataclasses: \code{DataConfig}, \code{ModelConfig}, \code{TrainConfig}, \code{EvalConfig}, \code{ArtifactConfig}, all wrapped in a \code{RunConfig}. You hand \code{RunConfig} a YAML file path; it gives you back a fully typed object. It also produces a deterministic 12-character hash of the entire config, which is recorded with the results --- so months later you can look at a metric in \code{results/metrics/summary.parquet} and identify the exact YAML that produced it.
+
+\subsection{\texttt{data\_loader.py} --- one schema to rule them all}
+
+The two datasets (HAI and Morris) come in wildly different formats: HAI is a folder of CSVs with timestamps and 79 sensor columns; Morris is an ARFF file with 16 features and no timestamps. The loader hides all of that and hands back a \code{DatasetBundle} with a fixed shape:
+
+\begin{itemize}
+  \item \code{features} --- a DataFrame of numeric columns only (the labels are \emph{never} in here, which prevents accidental leakage),
+  \item \code{labels} --- 0/1 attack flags,
+  \item \code{attack\_ids} --- which attack type each row belongs to,
+  \item \code{split} --- train/val/test assignments enforced at load time (train and val \emph{only} contain normal rows; attack rows can only appear in test).
+\end{itemize}
+
+Putting this enforcement in the loader rather than in the notebooks is deliberate: it is impossible to forget.
+
+\subsection{\texttt{preprocessing.py} --- the scaler-leak guard}
+
+A handful of small functions: a min-max scaler, a sliding-window builder, and threshold-from-percentile helpers. The interesting thing is what it \emph{refuses to do}: it has an assertion that crashes if you try to fit the scaler on data that contains attack rows. That single assertion guards against the \#1 cause of inflated published ICS results.
+
+\subsection{\texttt{src/models/} --- the six detectors behind one interface}
+
+\begin{Verbatim}
+models/
+    base.py                  AnomalyDetector ABC: fit, score, attribute, save, load
+    isolation_forest.py
+    ocsvm.py
+    autoencoder.py           the Dense AE
+    lstm_autoencoder.py
+    usad.py                  transformer-era SOTA (2020)
+    tranad.py                transformer-era SOTA (2022)
+    __init__.py              the registry that maps strings -> classes
+\end{Verbatim}
+
+\code{base.py} is the entire architectural argument of the codebase in 70 lines. Every model --- whether it is a 20-year-old Isolation Forest or a 2022 transformer --- implements the same four methods: \code{fit}, \code{score}, \code{attribute}, \code{save}/\code{load}. The experiment runner does not know or care which class it is working with; it just calls these methods. That is what makes ``swap the model, keep everything else identical'' a one-line YAML change.
+
+The registry in \code{\_\_init\_\_.py} lets a config say \code{name: "lstm\_ae"} and get back the right class. Adding a seventh model would mean: write the class, register a string in \code{\_\_init\_\_.py}, add a YAML config. Nothing else changes.
+
+\subsection{\texttt{src/evaluation/} --- the three metrics, with unit tests}
+
+\begin{Verbatim}
+evaluation/
+    pointwise.py        standard precision/recall/F1, plus best-F1 threshold search
+    point_adjust.py     PA-F1 (the metric the field over-uses)
+    etapr.py            event-based metric (the honest one)
+\end{Verbatim}
+
+Each metric is implemented from primitives, not imported from a library, because the comparison between metrics is the whole point of the thesis --- and you do not want a vendor's bug confounding the result. Each one has hand-computed unit tests in \code{tests/test\_evaluation.py} with worked examples, so a reviewer can verify the implementations directly.
+
+\subsection{\texttt{src/transfer/} --- the cross-dataset machinery}
+
+\begin{Verbatim}
+transfer/
+    schema_align.py     HAI(79) and Morris(16) projection via the 6-dim type vector
+    lopo.py             leave-one-process-out helpers for within-HAI
+\end{Verbatim}
+
+\code{schema\_align.py} is where the methodologically interesting bit lives: it reads \code{data/feature\_types.yaml} (the hand-labelled ``this sensor is a pressure reading, that one is a valve state'') and projects either dataset onto the common 6-dimensional type vector. \code{lopo.py} provides the ``hide process P1/P2/P3/P4 at training time'' support that powers the within-HAI ablation.
+
+\subsection{\texttt{src/attribution/} and \texttt{src/explain/}}
+
+\code{attribution/evaluation.py} computes precision@k of each model's blame scores against HAI's per-process attack labels --- the localization metric.
+
+\code{explain/} contains the SHAP-based attribution backends for the classical models (Isolation Forest and OC-SVM do not naturally produce per-feature scores; SHAP wraps them so they can be compared on the same footing as autoencoders). \code{\_shap\_backends.py} is a thin compatibility layer for SHAP's different model types; \code{attribution.py} is the public entry point.
+
+\subsection{\texttt{src/inference/} --- turning a trained model into a deployable thing}
+
+\begin{Verbatim}
+inference/
+    artifact.py             save/load model + scaler + threshold + metadata as one unit
+    pipeline.py             apply an artifact to a fresh DataFrame; pure function
+    adapters/
+        hai.py              parse a fresh HAI CSV
+        morris_gas.py       parse a fresh Morris ARFF/CSV
+\end{Verbatim}
+
+The \code{ModelArtifact} concept matters: when you save a trained model, you save \emph{everything needed to use it again} --- the model weights, the scaler that was fit on the training data, the threshold that was calibrated on validation data, and metadata about which features it expects. Loading an artifact and scoring a new file is a single function call: \code{score\_dataframe(artifact, df)}. The CLI in \code{scripts/score\_external.py} and the web app in \code{app/routes.py} are both thin wrappers around this one function.
+
+\section{\texttt{experiments/} --- config-driven runners}
+
+\begin{Verbatim}
+experiments/
+    run.py                  single same-dataset experiment
+    run_transfer.py         cross-dataset (HAI/Morris) experiment
+    run_lopo.py             leave-one-process-out experiment
+    run_attribution.py      per-sensor attribution evaluation
+    configs/                ~48 YAML files, one per experiment cell
+\end{Verbatim}
+
+Every experiment cell in the thesis (every row in every results table) has a corresponding YAML in \code{configs/}. The naming is systematic: \code{baseline\_hai\_lstm\_ae.yaml}, \code{transfer\_morris\_to\_hai\_tranad\_tgtcal.yaml}, \code{lopo\_hai\_P2\_usad.yaml}. The \code{\_tgtcal} suffix means ``threshold recalibrated on target normal data'' --- that is the C1 contribution in YAML form.
+
+To reproduce any number in the thesis: pick the YAML and run \code{python -m experiments.run <yaml>}. The result is appended to \code{results/metrics/summary.parquet}, tagged with the config hash, the seed, and a timestamp. No hidden state, no Jupyter-only logic, no ``you had to be there.''
+
+\section{\texttt{tests/} --- what makes the rest trustworthy}
+
+\begin{Verbatim}
+tests/
+    test_data_loader.py         loader returns the right shape, no label leakage
+    test_preprocessing.py       scaler-leak guard actually crashes
+    test_evaluation.py          all three metrics on hand-computed examples
+    test_models_smoke.py        every model can fit/score/attribute on tiny data
+    test_attribution.py         precision@k and lift baselines
+    test_explain.py             SHAP backends produce correctly-shaped outputs
+    test_transfer.py            schema projection preserves invariants
+    test_persistence.py         save -> load roundtrip identity
+    test_inference_pipeline.py  the artifact -> score path
+    test_hai_adapter.py         CSV parsing
+    test_morris_adapter.py      ARFF parsing
+    test_app_smoke.py           the web app boots and serves the homepage
+    test_demo_datasets.py       the bundled demo data is well-formed
+\end{Verbatim}
+
+The pattern is: metrics and loaders get \emph{real} tests with worked examples; models get smoke tests (fit on 100 fake rows, check it does not crash). That ratio matches where bugs would actually hurt the thesis: a broken metric invalidates every number in the document; a broken model just fails loudly.
+
+\section{\texttt{app/} --- the demo web application}
+
+\begin{Verbatim}
+app/
+    main.py                 FastAPI entry point --- boots the server
+    routes.py               HTTP endpoints (/score, /artifacts, /demo-datasets, ...)
+    schemas.py              pydantic models for request/response shapes
+    static/                 the frontend (vanilla HTML + JS + CSS)
+        index.html
+        app.js
+        style.css
+\end{Verbatim}
+
+This is what closes the loop between ``research figures'' and ``thing you can click on.'' A user lands on the homepage, picks a trained artifact (for example an LSTM-AE trained on HAI), uploads a CSV or picks a bundled demo dataset, and sees the per-row anomaly scores with metrics. The frontend is intentionally vanilla --- no React build step --- because the artifact is a thesis appendix, not a product.
+
+\section{\texttt{scripts/} --- one-off utilities}
+
+\begin{Verbatim}
+scripts/
+    score_external.py                CLI version of what the web app does
+    build_demo_datasets.py           produces the bundled CSVs in data/demo/
+    build_shap_attribution.py        generates the SHAP results parquet
+    build_shap_attribution_figure.py produces the corresponding figure
+\end{Verbatim}
+
+The distinction from \code{experiments/}: a \code{scripts/} file produces an \emph{artifact} (a figure, a bundled dataset) rather than a row in a results table. An \code{experiments/} file is a measurement; a \code{scripts/} file is a build step.
+
+\section{\texttt{notebooks/} --- thin, plot-only}
+
+\begin{Verbatim}
+notebooks/
+    01_data_exploration.ipynb
+    02_preprocessing_sanity.ipynb
+    03_baseline_results.ipynb
+    04_sota_results.ipynb
+    05_cross_dataset.ipynb           the headline chapter
+    06_metric_sensitivity.ipynb
+    07_attribution.ipynb
+\end{Verbatim}
+
+Each notebook reads \code{results/metrics/summary.parquet} (or the attribution parquets), filters to the rows it cares about, and produces figures into \code{results/figures/<chapter>/}. There is no model training in any notebook --- that would make the results un-reproducible. If a notebook's plot looks wrong, you do not debug the notebook; you re-run the underlying experiment and the plot regenerates.
+
+\section{\texttt{data/} --- the small, committed parts only}
+
+\begin{Verbatim}
+data/
+    feature_types.yaml      hand-labelled sensor types --- load-bearing for transfer
+    demo/                   tiny bundled samples for the web app
+        hai_test_sample.csv
+        morris_gas_test_sample.csv
+        manifest.json
+    raw/                    gitignored --- HAI/Morris originals go here
+    processed/              gitignored --- derived parquets
+    README.md               how to download the raw datasets
+\end{Verbatim}
+
+\code{feature\_types.yaml} is small but methodologically critical: it is the human input that makes the type-vector projection possible. Everything else under \code{data/} is either tiny demo samples or gitignored heavy data.
+
+\section{\texttt{results/} --- everything the experiments output}
+
+\begin{Verbatim}
+results/
+    metrics/
+        summary.parquet         the master results table
+                                --- one row per (run, seed, metric)
+        attribution.parquet     per-sensor attribution scores
+        attribution_shap.parquet
+    figures/                    one subfolder per thesis chapter
+    checkpoints/                gitignored --- fitted model artifacts
+    external/                   outputs from the web app's user uploads
+\end{Verbatim}
+
+\code{summary.parquet} is the single source of truth. Every notebook reads from it; every number in the thesis traces back to a row in it. Parquet rather than CSV because rows have nested columns (per-attack-type metrics), and parquet handles that natively.
+
+\section{\texttt{thesis/} --- the document itself}
+
+\begin{Verbatim}
+thesis/
+    main.tex                    the document spine
+    preamble.tex                packages, formatting, custom commands
+    references.bib              citations
+    build.sh                    one-command build
+    chapters/                   01_introduction.tex ... 08_conclusion.tex
+    frontmatter/                title page, abstracts in EN/RU/KK, assignment, etc.
+    appendices/                 reproducibility artifacts
+    build/                      generated PDFs (gitignored)
+\end{Verbatim}
+
+The thesis cites figures directly out of \code{results/figures/}. The build script regenerates the PDF; nothing in the document is hand-pasted from outside the repo.
+
+\section{The big picture: data flow}
+
+If you trace one number through the whole system, the path is:
+
+\begin{enumerate}
+  \item \textbf{Raw data} in \code{data/raw/} is read by \code{src/data\_loader.py} into a \code{DatasetBundle}.
+  \item \code{src/preprocessing.py} scales it and (optionally) cuts it into sliding windows.
+  \item A \textbf{model} from \code{src/models/} is fit, then asked to score the test split.
+  \item \code{src/evaluation/} turns the scores into metric numbers.
+  \item \code{experiments/run.py} writes a row into \code{results/metrics/summary.parquet}, tagged with the config hash.
+  \item A \textbf{notebook} in \code{notebooks/} reads that parquet and produces a figure under \code{results/figures/}.
+  \item \code{thesis/main.tex} includes the figure with a \code{\textbackslash includegraphics} and cites it.
+\end{enumerate}
+
+Every step has a test. Every experiment has a YAML. Every result has a config hash. That discipline is the actual contribution of the codebase --- it is what lets a reviewer believe the numbers.
+
+\end{document}
