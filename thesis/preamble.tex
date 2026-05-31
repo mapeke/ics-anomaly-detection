@@ -1,4 +1,7 @@
 % Preamble for XeLaTeX build (Times New Roman 14pt, English/Russian/Kazakh).
+% Conforms to R-15 (МУИТ rules for bachelor diploma works), edition 3, and to
+% the НОРМОКОНТРОЛЬ-2025 standard-control checklist (items cited inline below:
+% page numbering, no hyphenation, formula/listing numbering).
 % Build chain: see build.sh.
 
 \usepackage{fontspec}
@@ -8,17 +11,27 @@
 \setmainlanguage{english}
 \setotherlanguages{russian,kazakh}
 
-% --- Justification quality ---
-% microtype: character protrusion (XeLaTeX limitation).  Default tolerance
-% (200) keeps spacing tight; small emergencystretch absorbs the few hard
-% lines that would otherwise overflow into the right margin.
+% --- Justification quality (microtype protrusion) ---
 \usepackage[protrusion=true,final]{microtype}
-\emergencystretch=1em
+% Normo-2025 item 8 / R-15 §7.2: text is justified WITH NO word hyphenation
+% ("без переносов слов"). Forbid every hyphenation break and absorb the slack
+% with extra interword stretch so no line overflows the right margin.
+\hyphenpenalty=10000
+\exhyphenpenalty=10000
+\tolerance=3000
+\emergencystretch=3em
 
+% --- R-15 §7.2: margins L=30, R=10, T=20, B=25 mm ---
 \usepackage{geometry}
-% 2 cm side margins (vs 2.5 cm) give ~8 more chars per line at TNR 14pt,
-% which lets the justifier place words without large gaps.
-\geometry{left=2cm, right=2cm, top=2cm, bottom=2cm}
+\geometry{left=30mm, right=10mm, top=20mm, bottom=25mm}
+
+% --- R-15 §7.1: single line spacing ---
+\usepackage{setspace}
+\singlespacing
+
+% --- R-15 §7.10: abzac indent on first paragraph of every section ---
+\usepackage{indentfirst}
+\setlength{\parindent}{1.25cm}
 
 \usepackage{graphicx}
 \graphicspath{{../results/figures/}}
@@ -27,44 +40,120 @@
 \usepackage{tabularx}
 \usepackage{array}
 \usepackage{multirow}
+\usepackage{longtable}
 
 \usepackage{siunitx}
 \sisetup{detect-weight, round-mode=places, round-precision=3}
 
 \usepackage{amsmath, amssymb}
+% Normo-2025 item 53: formula numbers are (раздел.index), e.g. (4.1) -- the
+% first digit is the section (LaTeX chapter) number, the second the running
+% formula index within it. Default LaTeX numbers equations globally; bind them
+% to the chapter counter to match.
+\numberwithin{equation}{chapter}
 \usepackage{xcolor}
 \usepackage{listings}
 \lstset{basicstyle=\ttfamily\small, breaklines=true, frame=single}
+% Normo-2025 items 89-92: code listings are captioned "Listing N.M -- title",
+% numbered per section, in the source's own monospace font (not Times New Roman).
+% The lstlisting counter is created lazily, so define it here before binding it
+% to the chapter counter (equivalent to \numberwithin once the counter exists).
+\renewcommand{\lstlistingname}{Listing}
+% listings creates its own counter at \begin{document}; bind it to the chapter
+% counter afterwards so listing numbers read N.M (equivalent to \numberwithin).
+\makeatletter
+\AtBeginDocument{%
+  \@ifundefined{c@lstlisting}{\newcounter{lstlisting}}{}%
+  \@addtoreset{lstlisting}{chapter}%
+  \renewcommand{\thelstlisting}{\thechapter.\arabic{lstlisting}}%
+}
+\makeatother
 
 \usepackage{hyperref}
 \hypersetup{colorlinks=true, linkcolor=black, citecolor=black, urlcolor=blue}
 
-\usepackage[backend=biber, style=numeric-comp, sorting=none]{biblatex}
+% --- R-15 §6.16, §7.42: IEEE-style references, [N] in-text citations ---
+\usepackage[backend=biber, style=ieee, sorting=none]{biblatex}
 
 \usepackage{csquotes}
 
-% --- Heading sizes capped: chapter 18pt, section 16pt, subsection 14pt ---
-% Chapter uses 'hang' so "Chapter N. Title" appears on a single line,
-% bold, left-aligned -- matches Word-style heading look.
-\usepackage{titlesec}
-\titleformat{\chapter}[hang]
-  {\normalfont\bfseries\fontsize{18pt}{22pt}\selectfont}
-  {\chaptertitlename\ \thechapter.}{0.5em}{}
-\titlespacing*{\chapter}{0pt}{20pt}{18pt}
+% --- R-15 §7.13: page numbers in centre of bottom margin, suppressed on cover/title ---
+\usepackage{fancyhdr}
+\fancyhf{}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+\pagestyle{fancy}
+\fancypagestyle{plain}{%
+  \fancyhf{}%
+  \fancyfoot[C]{\thepage}%
+  \renewcommand{\headrulewidth}{0pt}%
+  \renewcommand{\footrulewidth}{0pt}%
+}
 
+% --- R-15 §7.10: numbered chapter (раздел) headings -- UPPERCASE, abzac-indented, no period.
+% R-15 §7.7: structural headings (CONTENTS, INTRODUCTION, CONCLUSION, REFERENCES) -- UPPERCASE, centered, unnumbered.
+% \chapter -> numbered "N TITLE"; \chapter* -> centered "TITLE" without number.
+\usepackage{titlesec}
+\titleformat{\chapter}[block]
+  {\normalfont\bfseries\fontsize{14pt}{18pt}\selectfont\MakeUppercase}
+  {\thechapter}{1em}{}
+\titlespacing*{\chapter}{\parindent}{0pt}{18pt}
+
+\titleformat{name=\chapter,numberless}[block]
+  {\normalfont\bfseries\fontsize{14pt}{18pt}\selectfont\centering\MakeUppercase}
+  {}{0em}{}
+\titlespacing*{name=\chapter,numberless}{0pt}{0pt}{18pt}
+
+% R-15 §7.11: subsection headings -- title case (first letter capital), abzac indent, no period.
 \titleformat{\section}
-  {\normalfont\bfseries\fontsize{16pt}{20pt}\selectfont}
+  {\normalfont\bfseries\fontsize{14pt}{18pt}\selectfont}
   {\thesection}{0.7em}{}
+\titlespacing*{\section}{\parindent}{14pt}{8pt}
+
 \titleformat{\subsection}
   {\normalfont\bfseries\fontsize{14pt}{18pt}\selectfont}
   {\thesubsection}{0.7em}{}
+\titlespacing*{\subsection}{\parindent}{12pt}{6pt}
+
 \titleformat{\subsubsection}
-  {\normalfont\bfseries\normalsize}
+  {\normalfont\bfseries\fontsize{14pt}{18pt}\selectfont\itshape}
   {\thesubsubsection}{0.7em}{}
 
-% Shorthand for inline code / file paths.
+% Ensure chapter pages do not skip to the right (R-15 §7.17 requires new page; openany already in main.tex).
+\makeatletter
+\renewcommand{\@makechapterhead}[1]{%
+  \vspace*{0pt}%
+  {\parindent\z@ \raggedright \normalfont
+    \ifnum \c@secnumdepth >\m@ne
+      \fontsize{14pt}{18pt}\selectfont\bfseries \thechapter\quad
+    \fi
+    \fontsize{14pt}{18pt}\selectfont\bfseries\MakeUppercase{#1}\par\nobreak
+    \vskip 18\p@}}
+\renewcommand{\@makeschapterhead}[1]{%
+  \vspace*{0pt}%
+  {\parindent\z@ \centering \normalfont
+    \fontsize{14pt}{18pt}\selectfont\bfseries\MakeUppercase{#1}\par\nobreak
+    \vskip 18\p@}}
+\makeatother
+
+% Numbering depth: section 1, subsection 1.1, sub-subsection 1.1.1.
+\setcounter{secnumdepth}{3}
+\setcounter{tocdepth}{2}
+
+% --- R-15 §7.22, §7.25: figure/table captions "Figure N -- title", centred for figures, abzac for tables, no trailing period.
+\usepackage[labelsep=endash,labelfont=normalfont,textfont=normalfont,figurename=Figure,tablename=Table]{caption}
+\captionsetup[figure]{justification=centering,singlelinecheck=true}
+\captionsetup[table]{justification=raggedright,singlelinecheck=false}
+% Normo-2025 items 89-92: "Listing N.M -- title", en-dash separator, left-aligned.
+\captionsetup[lstlisting]{labelsep=endash,justification=raggedright,singlelinecheck=false}
+
+% Shorthands.
 \newcommand{\code}[1]{\texttt{#1}}
 \newcommand{\file}[1]{\texttt{#1}}
+
+% Visible TODO placeholder for institutional fields user must fill before printing.
+\newcommand{\todopl}[1]{{\bfseries\color{red}[#1]}}
 
 % Results-table helper: center-align column.
 \newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}

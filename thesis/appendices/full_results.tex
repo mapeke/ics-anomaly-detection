@@ -1,0 +1,103 @@
+\chapter*{APPENDIX C}
+\addcontentsline{toc}{chapter}{Appendix C. Reproducibility -- registered run inventory}
+\label{app:full-results}
+\begin{center}
+\textit{Reproducibility -- registered run inventory}
+\end{center}
+\vspace{0.5cm}
+
+Every result in this thesis is a row in \file{results/metrics/summary.parquet} (or, for the attribution study, \file{results/metrics/attribution.parquet} and \file{results/metrics/attribution\_shap.parquet}).  Each row carries the configuration hash of the YAML file that produced it.  This appendix lists the YAML configurations grouped by experimental study so a reader can locate the configuration that produced any number cited in the body.
+
+\section*{Same-dataset detection runs}
+
+\begin{table}[h]
+\centering
+\caption{Same-dataset detection configurations.  Each combination of (detector, dataset) is run for the seeds listed in the YAML; the first reported seed in the body is 42 unless otherwise noted.}
+\small
+\begin{tabular}{lll}
+\toprule
+Configuration file & Detector & Dataset \\
+\midrule
+\file{baseline\_hai\_isolation\_forest.yaml} & Isolation Forest & HAI 21.03 \\
+\file{baseline\_hai\_ocsvm.yaml}              & One-Class SVM    & HAI 21.03 \\
+\file{baseline\_hai\_dense\_ae.yaml}          & Dense AE         & HAI 21.03 \\
+\file{baseline\_hai\_lstm\_ae.yaml}           & LSTM AE          & HAI 21.03 \\
+\file{sota\_hai\_usad.yaml}                   & USAD             & HAI 21.03 \\
+\file{sota\_hai\_tranad.yaml}                 & TranAD           & HAI 21.03 \\
+\file{baseline\_morris\_isolation\_forest.yaml} & Isolation Forest & Morris \\
+\file{baseline\_morris\_ocsvm.yaml}           & One-Class SVM    & Morris \\
+\file{baseline\_morris\_dense\_ae.yaml}       & Dense AE         & Morris \\
+\file{baseline\_morris\_lstm\_ae.yaml}        & LSTM AE          & Morris \\
+\file{sota\_morris\_usad.yaml}                & USAD             & Morris \\
+\file{sota\_morris\_tranad.yaml}              & TranAD           & Morris \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section*{Cross-testbed transfer runs}
+
+Each of the 12 (detector, transfer-direction) combinations is run twice: once with source-domain calibration (\code{val\_percentile}) and once with target-domain calibration (\code{target\_val\_percentile}), for 24 total transfer runs.
+
+\begin{table}[h]
+\centering
+\caption{Cross-testbed transfer configurations.  Each file is run for both source-cal and target-cal threshold protocols.}
+\small
+\begin{tabular}{lll}
+\toprule
+Configuration file & Detector & Direction \\
+\midrule
+\file{transfer\_hai\_to\_morris\_isolation\_forest.yaml} & Isolation Forest & HAI $\rightarrow$ Morris \\
+\file{transfer\_hai\_to\_morris\_ocsvm.yaml}              & One-Class SVM    & HAI $\rightarrow$ Morris \\
+\file{transfer\_hai\_to\_morris\_dense\_ae.yaml}          & Dense AE         & HAI $\rightarrow$ Morris \\
+\file{transfer\_hai\_to\_morris\_lstm\_ae.yaml}           & LSTM AE          & HAI $\rightarrow$ Morris \\
+\file{transfer\_hai\_to\_morris\_usad.yaml}               & USAD             & HAI $\rightarrow$ Morris \\
+\file{transfer\_hai\_to\_morris\_tranad.yaml}             & TranAD           & HAI $\rightarrow$ Morris \\
+\file{transfer\_morris\_to\_hai\_isolation\_forest.yaml} & Isolation Forest & Morris $\rightarrow$ HAI \\
+\file{transfer\_morris\_to\_hai\_ocsvm.yaml}              & One-Class SVM    & Morris $\rightarrow$ HAI \\
+\file{transfer\_morris\_to\_hai\_dense\_ae.yaml}          & Dense AE         & Morris $\rightarrow$ HAI \\
+\file{transfer\_morris\_to\_hai\_lstm\_ae.yaml}           & LSTM AE          & Morris $\rightarrow$ HAI \\
+\file{transfer\_morris\_to\_hai\_usad.yaml}               & USAD             & Morris $\rightarrow$ HAI \\
+\file{transfer\_morris\_to\_hai\_tranad.yaml}             & TranAD           & Morris $\rightarrow$ HAI \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section*{Within-HAI leave-one-process-out runs}
+
+\begin{table}[h]
+\centering
+\caption{Within-HAI LOPO configurations.  Twelve runs in total: three windowed detectors over four held-out processes.}
+\small
+\begin{tabular}{lll}
+\toprule
+Configuration file & Detector & Held-out process \\
+\midrule
+\file{lopo\_hai\_P1\_dense\_ae.yaml}, \file{lopo\_hai\_P2\_dense\_ae.yaml}, \file{lopo\_hai\_P3\_dense\_ae.yaml}, \file{lopo\_hai\_P4\_dense\_ae.yaml} & Dense AE & P1 / P2 / P3 / P4 \\
+\file{lopo\_hai\_P1\_lstm\_ae.yaml}, \file{lopo\_hai\_P2\_lstm\_ae.yaml}, \file{lopo\_hai\_P3\_lstm\_ae.yaml}, \file{lopo\_hai\_P4\_lstm\_ae.yaml} & LSTM AE  & P1 / P2 / P3 / P4 \\
+\file{lopo\_hai\_P1\_usad.yaml}, \file{lopo\_hai\_P2\_usad.yaml}, \file{lopo\_hai\_P3\_usad.yaml}, \file{lopo\_hai\_P4\_usad.yaml} & USAD     & P1 / P2 / P3 / P4 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section*{Per-sensor attribution runs}
+
+\begin{table}[h]
+\centering
+\caption{Per-sensor attribution configurations.  All runs use HAI~21.03; results are aggregated to process-level precision@k and stored in \file{results/metrics/attribution.parquet} (reconstruction \& attention) and \file{results/metrics/attribution\_shap.parquet} (SHAP for IF / OC-SVM).}
+\small
+\begin{tabular}{lll}
+\toprule
+Configuration file & Detector & Attribution method \\
+\midrule
+\file{attribution\_dense\_ae.yaml}      & Dense AE         & Per-feature reconstruction MSE \\
+\file{attribution\_lstm\_ae.yaml}       & LSTM AE          & Per-feature reconstruction MSE \\
+\file{attribution\_usad.yaml}           & USAD             & Per-feature reconstruction MSE \\
+\file{attribution\_tranad\_recon.yaml}  & TranAD           & Per-feature reconstruction MSE \\
+\file{attribution\_tranad\_attn.yaml}   & TranAD           & Attention rollout (\S\ref{sec:tranad-attn}) \\
+\file{attribution\_isolation\_forest\_shap.yaml} & Isolation Forest & SHAP TreeExplainer \\
+\file{attribution\_ocsvm\_shap.yaml}    & One-Class SVM    & SHAP KernelExplainer \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+To reproduce any cell of any results table in the body of the thesis: locate the table caption, identify the (detector, dataset, metric, regime) tuple, find the corresponding YAML in the table above, and run \code{python -m experiments.run experiments/configs/<file>.yaml}.  The runner appends a row to \file{results/metrics/summary.parquet} with the configuration hash; that row should match the cell to floating-point tolerance.

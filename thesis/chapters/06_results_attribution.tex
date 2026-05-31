@@ -1,13 +1,13 @@
-\chapter{Results III --- Per-sensor attribution}
+\section{Per-sensor attribution}
 \label{ch:results-attribution}
 
 Notebook: \file{07\_attribution.ipynb}.  Figure: F5.  Source: \file{results/metrics/attribution.parquet} ($3$ seeds $\times$ $4$ AE-family models $\times$ reconstruction; $3$ seeds $\times$ TranAD $\times$ attention) and \file{results/metrics/attribution\_shap.parquet} ($3$ seeds $\times$ $\{$IF, OCSVM$\}$ $\times$ SHAP) for the two classical baselines that don't have reconstruction-error attribution.
 
-\section{Evaluation protocol recap}
+\subsection{Evaluation protocol recap}
 
 For each attack window in HAI test, the model produces a per-feature attribution vector.  We rank features by attribution and compute precision@k --- the fraction of the top-k features that belong to the attacked process (from HAI's \code{attack\_P\{n\}} label).  Random baseline $=$ share of features in the attacked process: $0.48$ for P1, $0.28$ for P2, $0.09$ for P3.
 
-\section{Precision@5 (mean $\pm$ std across seeds 7, 42, 123)}
+\subsection{Precision@5 (mean $\pm$ std across seeds 7, 42, 123)}
 
 \begin{table}[h]
 \centering
@@ -34,7 +34,7 @@ Random   & $0.48$ & $0.28$ & $0.09$ \\
 \label{fig:attr-p5}
 \end{figure}
 
-\section{Finding 4.1 --- detection-vs-localization tradeoff (robust across seeds)}
+\subsection{Finding 4.1 --- detection-vs-localization tradeoff (robust across seeds)}
 
 Lift over random baseline for mean p@5:
 
@@ -57,16 +57,16 @@ TranAD  & $1.22\times$ & $1.26\times$ & $0.23\times$ \\
 
 The mechanism: Dense AE operates per-timestep, so per-feature reconstruction error is aligned with the current frame's anomaly.  Windowed models reconstruct a $60$-step window and average per-feature error over time; the averaging concentrates mass on features with the largest dynamic-range variation --- HAI's P1 flow and pressure sensors.  A small perturbation to a few discrete P2 flags is lost in the mean.
 
-\textbf{This inverts the detection ranking of Chapter~\ref{ch:results-detection}}: TranAD is \#1 on HAI eTaPR but near-worst on P3 localization ($0.02$ mean p@5, $0.23\times$ random lift).  For an operator triaging a flagged window, Dense AE's per-feature output is more actionable.  Reporting only detection F1 obscures this.
+\textbf{This inverts the detection ranking of Section~\ref{ch:results-detection}}: TranAD is \#1 on HAI eTaPR but near-worst on P3 localization ($0.02$ mean p@5, $0.23\times$ random lift).  For an operator triaging a flagged window, Dense AE's per-feature output is more actionable.  Reporting only detection F1 obscures this.
 
-\section{Finding 4.2 --- attention rollout is null (robust across seeds)}
+\subsection{Finding 4.2 --- attention rollout is null (robust across seeds)}
 \label{sec:finding-attn-null}
 
 TranAD attention-weighted attribution differs from plain reconstruction attribution by $< 0.01$ on every $(\text{process}, k)$ pair across all three seeds.  The two methods are empirically interchangeable.
 
 Intuition: with a single-layer encoder, rollout $=$ raw attention matrix.  Attention averaged over $60$ output positions on HAI normal data is close to uniform; reweighting timesteps uniformly leaves the per-feature ranking unchanged.  Attention-based XAI for per-sensor localization in ICS windowed AD is not automatically the right tool --- one has to verify attention-over-time is structurally variable before investing.
 
-\section{Finding 4.3 --- LSTM-AE $\equiv$ USAD attribution is a genuine structural result}
+\subsection{Finding 4.3 --- LSTM-AE $\equiv$ USAD attribution is a genuine structural result}
 
 Across $3$ seeds, LSTM-AE and USAD produce p@k values identical to two decimals on every $(\text{process}, k)$ pair.  Standard deviations are $\leq 0.016$ within each model.  This is not seed noise; the two architectures converge to the same per-feature reconstruction ranking on HAI.
 
@@ -74,7 +74,7 @@ Hypothesis: the ranking is dominated by the MinMax-scaled feature variance struc
 
 If your model class produces the same attribution ranking as a simpler baseline, the extra architectural complexity is buying detection accuracy (USAD and LSTM-AE \emph{do} differ in detection F1 slightly), not attribution quality.  Operators paying the complexity tax for a richer model should audit that they're getting the richer output.
 
-\section{Revised framing vs.\ the seed-42-only report}
+\subsection{Revised framing vs.\ the seed-42-only report}
 
 An earlier draft (commit \texttt{a2957b0}) reported ``TranAD actively anti-localizes on P3 (p@5 $= 0.02$, lift $0.2\times$, worse than flipping coins).''  Multi-seed averaging softens this claim:
 \begin{itemize}
@@ -84,7 +84,7 @@ An earlier draft (commit \texttt{a2957b0}) reported ``TranAD actively anti-local
 
 Revised framing: TranAD \emph{can} localize to P2 with enough seed-trial budget, but its localization is seed-unstable, whereas Dense AE and LSTM-AE/USAD are seed-stable (even if the latter two are structurally stuck on P1).  An argument for multi-seed evaluation in any attribution study.
 
-\section{Finding 4.4 --- SHAP fills in the classical baselines}
+\subsection{Finding 4.4 --- SHAP fills in the classical baselines}
 \label{sec:finding-shap}
 
 The four AE-family / windowed models above use reconstruction-error or attention-rollout attribution, both of which require an internal reconstruction signal.  Isolation Forest and One-Class SVM produce a single anomaly score per row with no per-feature decomposition, so the same evaluation cannot be applied directly.  We close that gap with SHAP: \code{shap.TreeExplainer} on the underlying \code{IsolationForest} ensemble (exact, $\sim$ms/row), and \code{shap.KernelExplainer} on the \code{OneClassSVM} decision function with a deterministic $100$-row background sample drawn from the training-normal split (approximate, $\sim$seconds/row).  The KernelExplainer's predictor wraps \code{-decision\_function} so SHAP explains the project's anomaly-score convention (higher contribution = more anomalous) directly, and the background sample is fixed across the three training seeds so SHAP variance reflects the artifacts, not the sampling.  Evaluation reuses the same \code{precision\_at\_k\_by\_attack} harness from \S\ref{ch:results-attribution}; the only deviation from Phase 4's protocol is that OCSVM evaluation subsamples to $100$ attack rows per process per seed to keep KernelExplainer's runtime bounded --- the precision@k aggregate is robust to this at $n_{\text{attack}} \geq 100$.
@@ -122,7 +122,7 @@ The mechanism for OCSVM's localization quality is plausible: \code{shap.KernelEx
 
 \textbf{Caveat.}  KernelExplainer with a $100$-row background is approximate: the qualitative ranking is robust to background size in our setup, but the exact contribution magnitudes are not, and OCSVM's $100$ attack rows per process per seed is enough for ranking but tighter than the AE-family's full attack set ($n_{\text{P1}} \approx 7000$, $n_{\text{P2}} \approx 1300$, $n_{\text{P3}} \approx 410$ per seed).  As with the AE-family results above, p@k is computed at the process granularity HAI provides; per-sensor evaluation would need labelled per-sensor ground truth which HAI 21.03 does not release.
 
-\section{Limitations}
+\subsection{Limitations}
 
 \begin{enumerate}
   \item \textbf{Process-level eval is weaker than per-sensor eval.}  HAI 22.04's README has more detailed per-attack descriptions; a hand-curated per-sensor ground truth on 22.04 would strengthen the claim.

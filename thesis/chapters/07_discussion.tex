@@ -1,35 +1,35 @@
-\chapter{Discussion}
+\section{Discussion}
 \label{ch:discussion}
 
-\section{What the three findings add up to}
+\subsection{What the three findings add up to}
 
 Taken together:
 \begin{itemize}
-  \item \textbf{Detection (Chapter~\ref{ch:results-detection}).}  SOTA windowed models beat classical ones on same-dataset eTaPR; rankings change with metric choice; PA-F1 inflation is real.
-  \item \textbf{Transfer (Chapter~\ref{ch:results-transfer}).}  Source-calibrated thresholds don't transfer; target-calibrated thresholds reveal a genuine classical/SOTA split; within-HAI LOPO shows feature-specific blindness.
-  \item \textbf{Attribution (Chapter~\ref{ch:results-attribution}).}  Dense AE beats SOTA on localization; attention rollout adds nothing.
+  \item \textbf{Detection (Section~\ref{ch:results-detection}).}  SOTA windowed models beat classical ones on same-dataset eTaPR; rankings change with metric choice; PA-F1 inflation is real.
+  \item \textbf{Transfer (Section~\ref{ch:results-transfer}).}  Source-calibrated thresholds don't transfer; target-calibrated thresholds reveal a genuine classical/SOTA split; within-HAI LOPO shows feature-specific blindness.
+  \item \textbf{Attribution (Section~\ref{ch:results-attribution}).}  Dense AE beats SOTA on localization; attention rollout adds nothing.
 \end{itemize}
 
 The single thesis-level story: \textbf{ICS anomaly detection is not a one-number benchmark.}  Different metrics, calibration regimes, and attribution tasks all reshuffle the ranking.  Any paper that picks one (model, metric, threshold) triple to report has under-constrained its own claim.  Reviewers should ask for the full grid; our contribution is a protocol for producing it.
 
-\section{Likely reviewer objections}
+\subsection{Likely reviewer objections}
 
 \paragraph{``Your transfer projection is lossy.''}
-True, by design (Chapter~\ref{ch:results-transfer}, \S1).  We accepted option~1 (per-variable type tagging) as the simplest defensible scheme.  Option~2 (learned projections) and option~3 (within-testbed-only) remained unused, and we report the ceiling-check against within-HAI LOPO: even in the most favourable within-testbed condition, the ceiling is $0.57$ pointwise F1 --- an order of magnitude better than cross-testbed but still far from same-dataset.  The cross-testbed numbers are not artifacts of a bad projection; they are upper-bounded by the problem itself.
+True, by design (Section~\ref{ch:results-transfer}, \S1).  We accepted option~1 (per-variable type tagging) as the simplest defensible scheme.  Option~2 (learned projections) and option~3 (within-testbed-only) remained unused, and we report the ceiling-check against within-HAI LOPO: even in the most favourable within-testbed condition, the ceiling is $0.57$ pointwise F1 --- an order of magnitude better than cross-testbed but still far from same-dataset.  The cross-testbed numbers are not artifacts of a bad projection; they are upper-bounded by the problem itself.
 
 \paragraph{``TranAD reproducibility gap.''}
 PA-F1 $0.46$ vs.\ Tuli et al.~\cite{tuli2022tranad}'s $0.97$.  Sources enumerated in \S\ref{sec:tranad-repro}: dataset version, subsample, architecture capacity, threshold protocol.  Our TranAD still ranks \#1 on HAI PA-F1 in our setup --- the qualitative claim survives.  The thesis does not depend on matching published absolutes; it depends on comparing models under a consistent protocol.
 
 \paragraph{``USAD collapsed on Morris --- selection bias?''}
-USAD eTaPR $0.009$ on Morris (Chapter~\ref{ch:results-detection}) is not cherry-picked; it is what the model's scores produce.  The collapse is reported as a finding about USAD's assumptions on discrete data, not hidden.
+USAD eTaPR $0.009$ on Morris (Section~\ref{ch:results-detection}) is not cherry-picked; it is what the model's scores produce.  The collapse is reported as a finding about USAD's assumptions on discrete data, not hidden.
 
 \paragraph{``Only one seed for Phase 4.''}
-Acknowledged; listed as a limitation.  Phase 1--2 multi-seed numbers showed eTaPR variance $\leq 0.02$ across seeds for the classical models; attribution seed-variance is similar in the multi-seed runs reported in Chapter~\ref{ch:results-attribution}.  The P1/P2/P3 ordering is robust to that magnitude of noise.
+Acknowledged; listed as a limitation.  Phase 1--2 multi-seed numbers showed eTaPR variance $\leq 0.02$ across seeds for the classical models; attribution seed-variance is similar in the multi-seed runs reported in Section~\ref{ch:results-attribution}.  The P1/P2/P3 ordering is robust to that magnitude of noise.
 
 \paragraph{``Process-level attribution is weak.''}
-Yes; HAI 21.03 does not publish per-sensor attack targets in machine-readable form.  Chapter~\ref{ch:results-attribution}, \S``Limitations'' lists this as the primary weakness and points at HAI 22.04 as a follow-up.
+Yes; HAI 21.03 does not publish per-sensor attack targets in machine-readable form.  Section~\ref{ch:results-attribution}, \S``Limitations'' lists this as the primary weakness and points at HAI 22.04 as a follow-up.
 
-\section{Practical implications for deployment}
+\subsection{Practical implications for deployment}
 
 \begin{itemize}
   \item \textbf{Calibrate on target-normal.}  Any deployment should collect a clean-operation period from the target plant before activating the detector and calibrate the threshold there.  Source-trained percentile thresholds produce trivial classifiers (\S\ref{sec:finding-src-cal}).
@@ -40,7 +40,7 @@ Yes; HAI 21.03 does not publish per-sensor attack targets in machine-readable fo
 \paragraph{Threshold-transfer semantics in the external-validation tool.}
 The pipeline described in \S\ref{sec:external-validation} intentionally persists both the fitted model and the source-derived threshold, even though the source threshold is rarely calibrated for a new deployment.  This is a methodological choice: freezing the threshold keeps the artifact bit-reproducible against the run that produced it (the ``does my tool match my thesis number'' check), while the CLI and web app additionally accept a \code{target\_val\_percentile} recalibration matching the transfer protocol of \S\ref{sec:finding-tgt-cal}.  Users scoring an unseen dataset should read source-threshold F1 as a reproducibility check and target-calibrated F1 as the operational number; reporting only one would repeat the \code{src-cal} vs.\ \code{tgt-cal} confusion this thesis flags.
 
-\section{What we deliberately did not test}
+\subsection{What we deliberately did not test}
 
 \begin{itemize}
   \item New detector architectures.  The thesis is empirical, not architectural.
@@ -49,12 +49,12 @@ The pipeline described in \S\ref{sec:external-validation} intentionally persists
   \item Federated or differentially-private training.  Out of scope.
 \end{itemize}
 
-\section{Future work}
+\subsection{Future work}
 \label{sec:future}
 
 \begin{enumerate}
-  \item \textbf{HAI 22.04 per-sensor attribution.}  22.04's README contains per-attack target-sensor descriptions that can be parsed into a ground-truth mapping.  Running the Chapter~\ref{ch:results-attribution} eval against that would upgrade the localization claim from process-level to sensor-level.
-  \item \textbf{Multi-seed attribution} across all six models to confirm or refute the LSTM-AE $\equiv$ USAD coincidence (Chapter~\ref{ch:results-attribution}, Finding 4.3).
+  \item \textbf{HAI 22.04 per-sensor attribution.}  22.04's README contains per-attack target-sensor descriptions that can be parsed into a ground-truth mapping.  Running the Section~\ref{ch:results-attribution} eval against that would upgrade the localization claim from process-level to sensor-level.
+  \item \textbf{Multi-seed attribution} across all six models to confirm or refute the LSTM-AE $\equiv$ USAD coincidence (Section~\ref{ch:results-attribution}, Finding 4.3).
   \item \textbf{Learned projection for schema alignment} (CLAUDE.md \S5.2 option 2) to test whether the cross-testbed ceiling moves under a richer alignment.  We expect modest improvement given the LOPO ceiling argument above, but the experiment is cheap to run.
   \item \textbf{PA-F1 replacement in the ICS AD literature.}  Our data reproduces the Kim et al.~\cite{kim2022towards} critique on ICS benchmarks; an editorial push to eTaPR as the default would be a small but useful community-level contribution.
 \end{enumerate}

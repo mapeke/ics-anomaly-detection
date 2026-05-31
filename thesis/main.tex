@@ -12,31 +12,62 @@
 
 \begin{document}
 
-% --- Front matter (institutional, signed/sealed) ---
-\include{frontmatter/title_page}
-\include{frontmatter/approval}
-\include{frontmatter/assignment}
+% --- Page numbering (Normo-2025 item 6 / R-15 §7.13) ---
+% Every page is counted in order, but the printed number is suppressed on the
+% cover, title page, assignment, calendar plan, the three annotations and the
+% CONTENTS page; the number first appears on the page that follows CONTENTS.
+% The page COUNTER keeps advancing through the front matter (cover = 0, title
+% page = 1), so the first body page prints its true cumulative number.
+% Make both the default style and the "plain" style that report auto-applies on
+% \chapter*/TOC/list pages print nothing while we are in the front matter.
+\pagestyle{empty}
+\fancypagestyle{plain}{%
+  \fancyhf{}%
+  \renewcommand{\headrulewidth}{0pt}%
+  \renewcommand{\footrulewidth}{0pt}%
+}
 
-% --- Multilingual abstracts (English, Russian, Kazakh) on separate pages ---
-\include{frontmatter/abstract_en}
-\include{frontmatter/abstract_ru}
+% --- Front matter per R-15 §6.3 ---
+\include{frontmatter/cover}            % R-15 App. 4 (обложка) -- not numbered
+\include{frontmatter/title_page}       % R-15 App. 5 (титульный лист)
+\include{frontmatter/assignment}       % R-15 App. 2 (задание на дипломную работу)
+\include{frontmatter/calendar}         % R-15 App. 3 (календарный план)
+
+% --- Trilingual annotations per R-15 §6.8 (order: Kazakh, Russian, English) ---
 \include{frontmatter/abstract_kk}
+\include{frontmatter/abstract_ru}
+\include{frontmatter/abstract_en}
 
-% --- Tables of contents / figures / tables ---
+% --- Tables of contents / figures / tables (CONTENTS carries no printed number) ---
 \tableofcontents
 \listoffigures
 \listoftables
 
+% --- Restore the numbered footer: from INTRODUCTION on, the page number is
+% printed bottom-centre (Normo-2025 item 6: "внизу страницы по середине"). ---
+% \clearpage first so any trailing CONTENTS / list-of pages are shipped out
+% under the empty style before the numbered style takes effect.
+\clearpage
+\fancypagestyle{plain}{%
+  \fancyhf{}%
+  \fancyfoot[C]{\thepage}%
+  \renewcommand{\headrulewidth}{0pt}%
+  \renewcommand{\footrulewidth}{0pt}%
+}
+\pagestyle{fancy}
+
 % --- Body ---
 \include{chapters/01_introduction}
-\include{chapters/02_background}
-\include{chapters/03_method}
-\include{chapters/04_results_detection}
-\include{chapters/05_results_transfer}
-\include{chapters/06_results_attribution}
-\include{chapters/07_discussion}
+\include{chapters/02_background}            % 1 ANALYTICAL PART
+\include{chapters/03_method}                % 2 THE THEORETICAL PART
+\include{chapters/03plus_implementation}    % 3 SOFTWARE IMPLEMENTATION (umbrella for 04-07)
 \include{chapters/08_conclusion}
 
-\printbibliography
+\printbibliography[title={REFERENCES},heading=bibintoc]
+
+% --- Appendices per R-15 §7.45--7.48 ---
+\include{appendices/feature_types}
+\include{appendices/hyperparameters}
+\include{appendices/full_results}
 
 \end{document}

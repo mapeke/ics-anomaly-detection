@@ -1,0 +1,130 @@
+\chapter*{APPENDIX A}
+\addcontentsline{toc}{chapter}{Appendix A. Feature-type tags for cross-dataset transfer}
+\label{app:feature-types}
+\begin{center}
+\textit{Feature-type tags for cross-dataset transfer}
+\end{center}
+\vspace{0.5cm}
+
+The cross-testbed transfer study (Section~\ref{ch:results-transfer}) projects HAI's 79 features and Morris's 16 features onto a shared canonical type vector via the per-variable type tags in \file{data/feature\_types.yaml}.  This appendix renders the contents of that file as two tables (Tables~\ref{tab:hai-types} and~\ref{tab:morris-types}) so the projection can be inspected without leaving the document.
+
+A type that appears in only one dataset is excluded from the cross-testbed projection.  The intersection of types present in both datasets is the six-dimensional shared input space used in Section~\ref{ch:results-transfer}: \texttt{pressure}, \texttt{pump\_state}, \texttt{setpoint}, \texttt{system\_state}, \texttt{valve\_position}, and \texttt{control\_signal}.  Per-type aggregation is by mean of the MinMax-scaled values, with \texttt{max} substituted for binary state types (\texttt{pump\_state}, \texttt{valve\_position}, \texttt{system\_state}).
+
+\begin{longtable}{ll}
+\caption{HAI~21.03 feature-type tags.}
+\label{tab:hai-types}\\
+\toprule
+Feature & Canonical type \\
+\midrule
+\endfirsthead
+\multicolumn{2}{l}{\textit{Continued from previous page}}\\
+\toprule
+Feature & Canonical type \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+P1\_B2004      & unknown \\
+P1\_B2016      & unknown \\
+P1\_B3004      & unknown \\
+P1\_B3005      & unknown \\
+P1\_B4002      & unknown \\
+P1\_B4005      & unknown \\
+P1\_B400B      & unknown \\
+P1\_B4022      & unknown \\
+P1\_FCV01D     & valve\_setpoint \\
+P1\_FCV01Z     & valve\_position \\
+P1\_FCV02D     & valve\_setpoint \\
+P1\_FCV02Z     & valve\_position \\
+P1\_FCV03D     & valve\_setpoint \\
+P1\_FCV03Z     & valve\_position \\
+P1\_FT01       & flow \\
+P1\_FT01Z      & flow \\
+P1\_FT02       & flow \\
+P1\_FT02Z      & flow \\
+P1\_FT03       & flow \\
+P1\_FT03Z      & flow \\
+P1\_LCV01D     & valve\_setpoint \\
+P1\_LCV01Z     & valve\_position \\
+P1\_LIT01      & level \\
+P1\_PCV01D     & valve\_setpoint \\
+P1\_PCV01Z     & valve\_position \\
+P1\_PCV02D     & valve\_setpoint \\
+P1\_PCV02Z     & valve\_position \\
+P1\_PIT01      & pressure \\
+P1\_PIT02      & pressure \\
+P1\_PP01AD     & pump\_state \\
+P1\_PP01AR     & pump\_state \\
+P1\_PP01BD     & pump\_state \\
+P1\_PP01BR     & pump\_state \\
+P1\_PP02D      & pump\_state \\
+P1\_PP02R      & pump\_state \\
+P1\_STSP       & setpoint \\
+P1\_TIT01      & temperature \\
+P1\_TIT02      & temperature \\
+P2\_24Vdc      & system\_state \\
+P2\_ASD        & system\_state \\
+P2\_AutoGO     & system\_state \\
+P2\_CO\_rpm    & flow \\
+P2\_Emerg      & system\_state \\
+P2\_HILout     & control\_signal \\
+P2\_MSD        & system\_state \\
+P2\_ManualGO   & system\_state \\
+P2\_OnOff      & system\_state \\
+P2\_RTR        & system\_state \\
+P2\_SIT01      & flow \\
+P2\_SIT02      & flow \\
+P2\_TripEx     & system\_state \\
+P2\_VT01       & unknown \\
+P2\_VTR01--VTR04 & unknown \\
+P2\_VXT02--VXT03 & unknown \\
+P2\_VYT02--VYT03 & unknown \\
+P3\_FIT01      & flow \\
+P3\_LCP01D     & valve\_setpoint \\
+P3\_LCV01D     & valve\_setpoint \\
+P3\_LH         & system\_state \\
+P3\_LIT01      & level \\
+P3\_LL         & system\_state \\
+P3\_PIT01      & pressure \\
+P4\_HT\_FD     & setpoint \\
+P4\_HT\_LD     & setpoint \\
+P4\_HT\_PO     & pressure \\
+P4\_HT\_PS     & pressure \\
+P4\_LD         & setpoint \\
+P4\_ST\_FD     & setpoint \\
+P4\_ST\_GOV    & valve\_setpoint \\
+P4\_ST\_LD     & setpoint \\
+P4\_ST\_PO     & pressure \\
+P4\_ST\_PS     & pressure \\
+P4\_ST\_PT01   & pressure \\
+P4\_ST\_TT01   & temperature \\
+\end{longtable}
+
+\begin{table}[h]
+\centering
+\caption{Morris gas-pipeline feature-type tags.}
+\label{tab:morris-types}
+\small
+\begin{tabular}{ll}
+\toprule
+Feature & Canonical type \\
+\midrule
+address              & comm\_metadata \\
+function             & comm\_metadata \\
+length               & comm\_metadata \\
+setpoint             & setpoint \\
+gain                 & control\_signal \\
+reset rate           & control\_signal \\
+deadband             & control\_signal \\
+cycle time           & control\_signal \\
+rate                 & control\_signal \\
+system mode          & system\_state \\
+control scheme       & system\_state \\
+pump                 & pump\_state \\
+solenoid             & valve\_position \\
+pressure measurement & pressure \\
+crc rate             & comm\_metadata \\
+command response     & comm\_metadata \\
+\bottomrule
+\end{tabular}
+\end{table}

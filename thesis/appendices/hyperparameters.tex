@@ -1,0 +1,41 @@
+\chapter*{APPENDIX B}
+\addcontentsline{toc}{chapter}{Appendix B. Detector hyperparameters}
+\label{app:hyperparams}
+\begin{center}
+\textit{Detector hyperparameters}
+\end{center}
+\vspace{0.5cm}
+
+Every numerical result in this thesis is produced by a configuration-driven run via \code{python -m experiments.run <config.yaml>}.  The full set of YAML configurations lives in \file{experiments/configs/}.  This appendix lists the hyperparameters of one representative configuration per detector on each of the two same-dataset detection benchmarks, sufficient for an independent reader to reproduce the headline same-dataset numbers from Section~\ref{ch:results-detection}.
+
+\begin{table}[h]
+\centering
+\caption{Detector hyperparameters and training setup for the six same-dataset baselines on HAI~21.03 and Morris.  Window size of \texttt{null} indicates a per-frame (non-windowed) model.  Threshold method \texttt{val\_percentile~99} selects the operating point at the 99th percentile of the validation-fold scores; no test data is used in threshold selection.}
+\label{tab:hyperparams}
+\small
+\begin{tabular}{lp{2.5cm}p{4.5cm}lll}
+\toprule
+Detector & Window & Architecture or kernel & Epochs & Batch & Learning rate \\
+\midrule
+\multicolumn{6}{l}{\textbf{HAI 21.03} (subsample 150~000 train rows)} \\
+Isolation Forest & per-frame & 200 trees, contamination 0.10        & ---  & ---  & --- \\
+One-Class SVM    & per-frame & RBF, $\nu=0.05$, max 20\,000 train rows & ---  & ---  & --- \\
+Dense AE         & per-frame & MLP $128{-}64{-}32{-}64{-}128$        & 25   & 512  & $10^{-3}$ \\
+LSTM AE          & 60 frames & LSTM enc/dec, hidden 64, latent 32    & 10   & 256  & $10^{-3}$ \\
+USAD             & 60 frames & shared MLP encoder, dual decoders 64  & 30   & 256  & $10^{-3}$ \\
+TranAD           & 60 frames & 1-layer encoder, $d_{\text{model}}=64$, 4 heads, dual decoders & 30 & 128 & $10^{-4}$ \\
+\midrule
+\multicolumn{6}{l}{\textbf{Morris gas pipeline}} \\
+Isolation Forest & per-frame & 200 trees, contamination 0.10         & ---  & ---  & --- \\
+One-Class SVM    & per-frame & RBF, $\nu=0.05$                       & ---  & ---  & --- \\
+Dense AE         & per-frame & MLP $32{-}16{-}8{-}16{-}32$           & 25   & 256  & $10^{-3}$ \\
+LSTM AE          & 60 frames & LSTM enc/dec, hidden 32, latent 16    & 10   & 128  & $10^{-3}$ \\
+USAD             & 60 frames & shared MLP encoder, dual decoders 32  & 30   & 128  & $10^{-3}$ \\
+TranAD           & 60 frames & 1-layer encoder, $d_{\text{model}}=32$, 4 heads & 30 & 128 & $10^{-4}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Common settings across all configurations: random seed $\in\{42, 7, 123\}$ (three seeds per cell where multi-seed is reported); MinMaxScaler fit on the training-normal split only; sliding stride 1; validation fraction 0.15 of training data; metrics computed over the entire labelled test split; output appended to \file{results/metrics/summary.parquet} with the configuration hash recorded in the row.
+
+The transfer-study runs in \file{experiments/configs/transfer\_*.yaml} share the same per-detector hyperparameters and add a \code{schema\_align: type\_vector} flag plus a \code{threshold: \{val\_percentile, target\_val\_percentile\}} field selecting the source- or target-calibration regime.  The leave-one-process-out runs in \file{experiments/configs/lopo\_hai\_P\{1{,}2{,}3{,}4\}\_*.yaml} additionally specify the held-out process.

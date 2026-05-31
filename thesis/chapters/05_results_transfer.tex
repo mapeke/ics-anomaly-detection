@@ -1,13 +1,13 @@
-\chapter{Results II --- Cross-testbed transfer and within-HAI LOPO}
+\section{Cross-testbed transfer and within-HAI LOPO}
 \label{ch:results-transfer}
 
 This is the headline chapter.  Notebook: \file{05\_cross\_dataset.ipynb}.  Figures: F2, F3, F4 under \file{results/figures/05\_cross\_dataset/}.
 
-\section{Schema alignment}
+\subsection{Schema alignment}
 
 Six canonical types intersect HAI and Morris after hand-tagging in \file{data/feature\_types.yaml}: pressure, pump\_state, setpoint, system\_state, valve\_position, control\_signal.  HAI contributes 79 features collapsing to 6; Morris 16 features collapse to 6.  The projection is lossy by design --- we trade per-variable fidelity for a cross-testbed input shape that every detector can consume.
 
-\section{Finding 3.1 --- source calibration collapses to the class-prior baseline}
+\subsection{Finding 3.1 --- source calibration collapses to the class-prior baseline}
 \label{sec:finding-src-cal}
 
 Under \code{src-cal} (threshold $= $ 99th percentile of source validation scores), every transferred detector degenerates to a predict-all-attack baseline calibrated to the \emph{target's} class prior.
@@ -35,7 +35,7 @@ The score distributions on source and target data have no calibrated overlap; a 
 \label{fig:transfer-same-vs-cross}
 \end{figure}
 
-\section{Finding 3.2 --- target calibration reveals a classical-vs-SOTA split}
+\subsection{Finding 3.2 --- target calibration reveals a classical-vs-SOTA split}
 \label{sec:finding-tgt-cal}
 
 Under \code{tgt-cal} (threshold from 99th percentile of \emph{target}-normal validation --- unlabeled, attack-free data available in any realistic deployment), the collapse disappears and a genuine separation emerges.
@@ -60,7 +60,7 @@ Isolation Forest  & 0.13 & 0.22 \\
 
 The classical three are clustered near zero; the windowed SOTA three sit at $0.38$--$0.44$ eTaPR.  This is the first crisp classical-vs-SOTA gap in our study and it is invisible under source calibration.
 
-The reverse direction (Morris $\rightarrow$ HAI) is harder: pointwise F1 stays under $0.07$ for all models because the HAI $2.4\%$ attack prior saturates any 99th-percentile operating point.  PA-F1 recovers for classical detectors (Dense AE $0.47$, OC-SVM $0.36$) via the segment-inflation mechanism critiqued in Chapter~\ref{ch:results-detection} --- the same weakness that boosts classical PA-F1 same-dataset.
+The reverse direction (Morris $\rightarrow$ HAI) is harder: pointwise F1 stays under $0.07$ for all models because the HAI $2.4\%$ attack prior saturates any 99th-percentile operating point.  PA-F1 recovers for classical detectors (Dense AE $0.47$, OC-SVM $0.36$) via the segment-inflation mechanism critiqued in Section~\ref{ch:results-detection} --- the same weakness that boosts classical PA-F1 same-dataset.
 
 \begin{figure}[h]
 \centering
@@ -69,16 +69,16 @@ The reverse direction (Morris $\rightarrow$ HAI) is harder: pointwise F1 stays u
 \label{fig:transfer-cal-comp}
 \end{figure}
 
-\subsection{Why only the windowed models transfer}
+\subsubsection{Why only the windowed models transfer}
 
 Hypothesis: the classical models' normal manifold is essentially per-dataset specific; they fit the density of the source type-vector without capturing the temporal structure that is approximately shared between testbeds.  Windowed models encode short-term dynamics of normal operation --- pressure rising in ramp phases, valves opening after setpoints move --- and those dynamics recur in both testbeds.  The representation retains the invariant; the operating point does not.
 
-\section{Finding 3.3 --- within-HAI LOPO isolates feature shift}
+\subsection{Finding 3.3 --- within-HAI LOPO isolates feature shift}
 \label{sec:finding-lopo}
 
 Holding class prior fixed (both train and test are HAI), we drop one process's feature columns and compute F1 per-attack-target-process.
 
-\subsection{P2 drop produces targeted blindness}
+\subsubsection{P2 drop produces targeted blindness}
 
 \begin{table}[h]
 \centering
@@ -97,11 +97,11 @@ USAD     & 0.28 & 0.07 \\
 
 P2 is the turbine controller; its sensors are almost all discrete state flags with no analogue in P1, P3, or P4.  Removing them leaves the model blind to attacks that manifest only through those flags --- while detection on P1 attacks barely moves.
 
-\subsection{P1 drop produces global degradation}
+\subsubsection{P1 drop produces global degradation}
 
 When P1 (water loop, $33$ of $79$ features, $82\%$ of test attacks) is removed, all three models drop to F1 $\sim 0.1$ on every attack class.  P1 carries most of the model's picture of ``normal''; losing those features starves the whole detector.
 
-\subsection{P3 and P4 drop is mild and sometimes helpful}
+\subsubsection{P3 and P4 drop is mild and sometimes helpful}
 
 Dropping P3 or P4 occasionally \emph{improves} detection: USAD drop-P3 F1 on P1-attacks $= 0.57$ (vs.\ $0.35$ in the Phase-2 same-domain baseline).  Narrower input regularizes the windowed models.
 
@@ -112,15 +112,15 @@ Dropping P3 or P4 occasionally \emph{improves} detection: USAD drop-P3 F1 on P1-
 \label{fig:lopo-heatmap}
 \end{figure}
 
-\subsection{No consistent SOTA advantage under LOPO}
+\subsubsection{No consistent SOTA advantage under LOPO}
 
 Unlike the cross-testbed setting (where SOTA clearly beat classical under \code{tgt-cal}), LOPO shows no consistent classical/SOTA gap.  Dense AE is competitive with USAD on the P2-blindness diagnostic; both beat LSTM-AE on absolute numbers under drop-P2.  The cross-testbed SOTA advantage therefore looks tied to \emph{cross-schema representation}, not to robustness to feature loss per se.
 
-\section{Cross-reading: sensor-level transfer ceilings}
+\subsection{Cross-reading: sensor-level transfer ceilings}
 
 Best within-HAI LOPO pointwise F1 $= 0.57$ (USAD, drop-P3, P1-attacks).  Best cross-testbed \code{tgt-cal} pointwise F1 $\approx 0.13$ (LSTM-AE HAI$\rightarrow$Morris).  Same architecture, same class-prior control, partial sensor overlap: the cross-dataset ceiling is an order of magnitude lower than the within-dataset one.  This defends the cross-testbed numbers against the ``you just need a better common feature space'' reviewer critique --- even under the best within-testbed conditions, sensor-level transfer loses half its detection capability.
 
-\section{External-validation pipeline}
+\subsection{External-validation pipeline}
 \label{sec:external-validation}
 
 The transfer study above is closed over the two datasets chosen in Chapter~\ref{ch:method}.  To make the trained detectors directly inspectable, we ship a small external-validation pipeline as the thesis demo artifact: each run in \file{experiments/configs/} can opt into saving its fitted model, scaler, and threshold as a self-contained on-disk artifact, and a thin CLI (\code{python -m scripts.score\_external}) plus FastAPI app at \file{app/} apply that artifact to a Morris gas-pipeline ARFF or CSV.  The saved artifact reproduces the original summary-parquet row to floating-point tolerance on the held-out test split, which serves as both a reproducibility gate (no drift between train-time metrics and post-hoc scoring) and an entry point for a reader to score new captures against our detectors without retraining.  The web app exposes two input paths: an upload form for the visitor's own file, and a ``use bundled sample'' selector backed by two test-split slices we ship under \file{data/demo/} (one HAI 21.03, one Morris gas-pipeline) so the canonical thesis numbers can be reproduced in a browser without acquiring the source datasets.

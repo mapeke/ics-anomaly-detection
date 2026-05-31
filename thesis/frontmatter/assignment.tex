@@ -1,66 +1,112 @@
-% Diploma Project Assignment placeholder. TODO: replace with the official IITU
-% Assignment form (the «Задание на дипломный проект» sheet your department issues).
-
+% R-15 Appendix 2 — Assignment sheet (задание на дипломную работу).
 \thispagestyle{empty}
 
 \begin{center}
-{\large MINISTRY OF SCIENCE AND HIGHER EDUCATION OF THE REPUBLIC OF KAZAKHSTAN\par}
-\vspace{0.2cm}
-{\large \textbf{INTERNATIONAL INFORMATION TECHNOLOGY UNIVERSITY}\par}
-\vspace{0.5cm}
-\begin{flushright}
-``APPROVED'' \\
-Head of Department TODO \\
-\rule{4cm}{0.4pt}~/ TODO / \\
-``\rule{1cm}{0.4pt}'' \rule{2cm}{0.4pt} 2026
-\end{flushright}
-
-\vspace{0.5cm}
-{\Large \textbf{ASSIGNMENT}\par}
-{\large for the diploma project of the student\par}
-\vspace{0.3cm}
-{\large \textbf{TODO: Student full name}\par}
+{\fontsize{14pt}{18pt}\selectfont International Information Technology University\par}
+{\fontsize{14pt}{18pt}\selectfont Faculty of Computer Technology and Cybersecurity\par}
+{\fontsize{14pt}{18pt}\selectfont Department of Cybersecurity\par}
 \end{center}
 
-\vspace{0.5cm}
+\vspace{0.6cm}
 
-\noindent\textbf{1. Topic of the project:} ICS Anomaly Detection for Cyber-Physical Security.\\[0.2cm]
-Approved by the order of the rector No.~TODO from ``\rule{1cm}{0.4pt}'' \rule{2cm}{0.4pt} 2026.
+\noindent Educational Program: \textbf{6B06303 Network Security}
+
+\vspace{0.4cm}
+
+\begin{center}
+{\fontsize{14pt}{18pt}\selectfont \textbf{Diploma Project Assignment}\par}
+\end{center}
 
 \vspace{0.3cm}
-\noindent\textbf{2. Deadline for submission:} ``\rule{1cm}{0.4pt}'' \rule{2cm}{0.4pt} 2026.
+
+\noindent\textbf{Students:} Zainiddin D. B., Imankozhayeva L. N., Bekisheva G. G.
 
 \vspace{0.3cm}
-\noindent\textbf{3. Initial data:} HAI 21.03 testbed dataset (Hyundai/HanyangIIoT) and Morris gas-pipeline dataset (Mississippi State University); six anomaly-detection models from the literature; PyTorch / scikit-learn implementation environment.
+
+\noindent\textbf{Diploma project topic}\\
+\textit{ICS Anomaly Detection for Cyber-Physical Security: Cross-Testbed Generalization, Time-Aware Evaluation, and Per-Sensor Attribution.}
 
 \vspace{0.3cm}
-\noindent\textbf{4. List of issues to be developed:}
+
+\noindent Approved by IITU rector's order No.~\todopl{order \#} dated ``\rule{1cm}{0.4pt}'' \rule{2cm}{0.4pt} 2026.
+
+\vspace{0.3cm}
+
+\noindent\textbf{Diploma project submission date:} ``28'' May 2026.
+
+\vspace{0.4cm}
+
+\noindent\textbf{Diploma project initial data}
+\begin{itemize}
+  \setlength\itemsep{0.1em}
+  \item HAI 21.03 industrial-control-system testbed dataset (Hyundai/Hanyang IIoT, 79 sensor channels, four interconnected processes).
+  \item Morris Mississippi State University gas-pipeline dataset (Modbus RTU telemetry, 16 features after leak-column removal).
+  \item Six anomaly-detection algorithms from the literature: Isolation Forest, One-Class SVM, Dense Autoencoder, LSTM Autoencoder, USAD, TranAD.
+  \item Three time-aware evaluation metrics: point-wise F\textsubscript{1}, point-adjust F\textsubscript{1}, eTaPR.
+  \item Implementation environment: Python 3.11, PyTorch 2.3, scikit-learn 1.4, pytest 8.0.
+\end{itemize}
+
+\noindent\textbf{Details of computations and explanations (list of issues to be addressed)}
 \begin{enumerate}
-  \item Survey of ICS anomaly detection methods and evaluation metrics (literature review).
-  \item Implementation of six anomaly detectors (Isolation Forest, OC-SVM, Dense Autoencoder, LSTM Autoencoder, USAD, TranAD) under a unified interface.
-  \item Implementation of three time-aware evaluation metrics (point-wise, point-adjust, eTaPR) with unit tests.
-  \item Cross-testbed transfer study: HAI~$\leftrightarrow$~Morris under source- and target-calibrated thresholds; within-HAI leave-one-process-out control.
-  \item Per-sensor attribution evaluation against process-level attack labels.
-  \item Discussion of findings and practical implications for deployment.
+  \setlength\itemsep{0.1em}
+  \item Survey of ICS anomaly-detection methods, datasets, and time-aware evaluation metrics.
+  \item Implementation of six detectors under a unified \code{AnomalyDetector} interface (\code{fit}/\code{score}/\code{attribute}).
+  \item Implementation of three evaluation metrics with hand-computed unit tests; reproduction of published baseline numbers within tolerance, with honest documentation of any reproducibility gap.
+  \item Cross-testbed transfer study HAI~$\leftrightarrow$~Morris under both source-calibrated and target-calibrated thresholds, plus a within-HAI leave-one-process-out control.
+  \item Per-sensor attribution evaluation against HAI process-level attack labels with multi-seed sensitivity analysis.
+  \item Discussion of findings, practical recommendations, and reproducibility apparatus.
+\end{enumerate}
+
+\noindent\textbf{Graphic material}\\
+22 figures, 14 tables (final counts pending build).
+
+\vspace{0.3cm}
+
+\noindent\textbf{Recommended literature}\\
+Tuli et al.\ (2022) -- TranAD; Audibert et al.\ (2020) -- USAD; Shin et al.\ (2020) -- HAI dataset; Morris and Gao (2014) -- Morris gas-pipeline dataset; Kim et al.\ (2022) -- PA-F\textsubscript{1} critique; Hwang et al.\ (2022) -- eTaPR. Full reference list in the body of the diploma project (IEEE format).
+
+\vspace{0.3cm}
+
+\noindent\textbf{CD containing the digital version of the Diploma project and attachments}
+\begin{enumerate}
+  \setlength\itemsep{0.05em}
+  \item The source code and explanatory note;
+  \item Project presentation;
+  \item Electronic version of the diploma project.
 \end{enumerate}
 
 \vspace{0.3cm}
-\noindent\textbf{5. Graphic material:} 5 figures, 8 tables.
 
-\vspace{0.3cm}
-\noindent\textbf{6. Recommended literature:} Tuli et al. 2022 (TranAD); Audibert et al. 2020 (USAD); Shin et al. 2020 (HAI dataset); Morris \& Gao 2014 (Morris dataset); Kim et al. 2022 (PA-F1 critique); Hwang et al. 2022 (eTaPR).
+\noindent\textbf{Consultations on the diploma project}
 
-\vspace{0.5cm}
-\noindent\textbf{Date of issue:} ``\rule{1cm}{0.4pt}'' \rule{2cm}{0.4pt} 2026.
+\vspace{0.2cm}
 
-\vspace{1cm}
+\noindent\begin{tabular}{|p{4.5cm}|p{4.5cm}|p{2.5cm}|p{2.5cm}|}
+\hline
+Consultant & Name & \multicolumn{2}{c|}{Signature, date} \\
+\cline{3-4}
+& & Assignment given & Assignment received \\
+\hline
+Compliance monitor & \todopl{name} & & \\
+\hline
+\end{tabular}
+
+\vspace{0.6cm}
+
+\noindent Date of issue: ``\rule{1cm}{0.4pt}'' \rule{2cm}{0.4pt} 2026.
+
+\vspace{0.8cm}
+
 \noindent
-\begin{tabular}{p{6cm}p{4cm}}
-Scientific advisor & \rule{4cm}{0.4pt} \\
-TODO: Full name, degree & (signature) \\
-\\
-Student & \rule{4cm}{0.4pt} \\
-TODO: Full name & (signature) \\
+\begin{tabular}{@{}p{7cm}p{6cm}@{}}
+Research advisor & \rule{5cm}{0.4pt} \\
+Nurlybayev T. A. & \multicolumn{1}{c}{\footnotesize (signature)} \\[0.6cm]
+Assignment received by: & \rule{5cm}{0.4pt} \\
+Zainiddin D. B. & \multicolumn{1}{c}{\footnotesize (signature)} \\[0.2cm]
+& \rule{5cm}{0.4pt} \\
+Imankozhayeva L. N. & \multicolumn{1}{c}{\footnotesize (signature)} \\[0.2cm]
+& \rule{5cm}{0.4pt} \\
+Bekisheva G. G. & \multicolumn{1}{c}{\footnotesize (signature)} \\
 \end{tabular}
 
 \newpage

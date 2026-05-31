@@ -1,7 +1,7 @@
-\chapter{Method}
+\chapter{The theoretical part}
 \label{ch:method}
 
-This chapter describes the implementation that produces every number in the thesis.  All code lives in \file{src/} and \file{experiments/}; YAML configs in \file{experiments/configs/} are the canonical record of every run.
+This chapter describes the design and methodology that produces every number in the diploma project.  All code lives in \file{src/} and \file{experiments/}; YAML configs in \file{experiments/configs/} are the canonical record of every run.
 
 \section{Unified detector interface}
 
@@ -33,6 +33,18 @@ Both loaders return a \code{DatasetBundle} with \code{features}, \code{labels}, 
   \item \code{percentile\_threshold(val\_scores, 99.0)} picks the operating point from validation scores (never from test).
 \end{itemize}
 
+Each step has an exact definition that the rest of the apparatus depends on.  \emph{Scaling} is per-feature min--max with the statistics estimated on the training-normal split only,
+\begin{equation}
+  \tilde{x}_j = \frac{x_j - \min_{t \in \mathrm{train}} x_{t,j}}{\max_{t \in \mathrm{train}} x_{t,j} - \min_{t \in \mathrm{train}} x_{t,j}},
+  \label{eq:minmax}
+\end{equation}
+with clipping to $[0,1]$ at transform time so that test values outside the training range do not produce out-of-bound inputs to the sigmoid-output autoencoders.  Fitting the scaler on normal data only --- rather than on the full series --- is the single most common source of inflated published numbers in ICS AD, because attack-range statistics leak the anomaly into the very normalisation the model trains against; the loader asserts the absence of attack rows in train and validation \emph{before}~\eqref{eq:minmax} is fit.  \emph{Windowing} maps a scaled matrix $X \in \mathbb{R}^{T \times F}$ to a tensor of $n = \lfloor (T - w)/s \rfloor + 1$ overlapping windows of length $w$ at stride $s$, and a window inherits the positive label iff any frame inside it is anomalous, $y^{(w)}_i = \max_{\,0 \leq \delta < w} y_{\,i s + \delta}$.  \emph{Thresholding} selects the operating point as the $p$-th percentile of the anomaly scores on the clean validation fold,
+\begin{equation}
+  \tau = \mathrm{Percentile}_{p}\bigl(\{\, s(x) : x \in \mathrm{val} \,\}\bigr), \qquad p = 99,
+  \label{eq:threshold}
+\end{equation}
+so that, by construction, roughly $1\%$ of clean data is flagged and no test label ever participates in threshold selection.  Equation~\eqref{eq:threshold} is the source-calibration rule; the target-calibration variant of Section~\ref{ch:results-transfer} substitutes the target domain's clean validation scores for the source domain's.
+
 \section{Evaluation (\file{src/evaluation/})}
 
 \begin{itemize}
@@ -52,11 +64,20 @@ The method is:
   \item Project both datasets to the intersection of types.  Train on source type-vector; score on target type-vector.
 \end{enumerate}
 
+Formally, the type tags induce a partition of each dataset's raw columns into type groups.  For dataset $d$ with feature set $\mathcal{F}_d$ and a tagging map $\mathrm{type}_d : \mathcal{F}_d \to \mathcal{T}$, the projection of a raw row $x$ onto the shared type space is the aggregation
+\begin{equation}
+  \Pi_d(x)_t = \operatorname{agg}_t\bigl(\{\, x_f : f \in \mathcal{F}_d,\; \mathrm{type}_d(f) = t \,\}\bigr),
+  \qquad t \in \mathcal{T}_\cap,
+  \label{eq:projection}
+\end{equation}
+where $\mathcal{T}_\cap = \mathrm{types}(\mathcal{F}_{\mathrm{src}}) \cap \mathrm{types}(\mathcal{F}_{\mathrm{tgt}}) \setminus \{\texttt{unknown}, \texttt{comm\_metadata}\}$ is the set of canonical types present in both datasets after exclusions, and $\operatorname{agg}_t$ is the per-type aggregator (mean by default; \code{max} for binary-state types such as \texttt{pump\_state} and \texttt{valve\_position}).  Because $\Pi_{\mathrm{src}}$ and $\Pi_{\mathrm{tgt}}$ both map into $\mathbb{R}^{|\mathcal{T}_\cap|}$, a detector trained on $\Pi_{\mathrm{src}}(X_{\mathrm{src}})$ can be evaluated directly on $\Pi_{\mathrm{tgt}}(X_{\mathrm{tgt}})$ with no shape mismatch.  The projection in~\eqref{eq:projection} is deliberately lossy: it discards per-variable identity in exchange for a cross-testbed input shape every detector can consume, and Section~\ref{ch:results-transfer} measures exactly how much detection capability that trade costs.
+
 Two calibration regimes are implemented in \file{experiments/run\_transfer.py}:
 \begin{itemize}
   \item \code{val\_percentile} --- threshold from 99th percentile of \emph{source} validation scores.
   \item \code{target\_val\_percentile} --- threshold from 99th percentile of \emph{target}-normal validation scores.  Decouples representation transfer from operating-point transfer.
 \end{itemize}
+The distinction matters because~\eqref{eq:projection} transfers the learned \emph{representation} (the model weights and the scoring rule) but says nothing about the \emph{operating point}: a threshold calibrated on the source-score distribution need not sit anywhere sensible on the target-score distribution.  Reporting both regimes is what lets Section~\ref{ch:results-transfer} separate a representation that transfers from a threshold that does not.
 
 \section{Within-HAI LOPO (\file{src/transfer/lopo.py})}
 
@@ -70,7 +91,16 @@ Two calibration regimes are implemented in \file{experiments/run\_transfer.py}:
   \item \code{precision\_at\_k\_by\_attack} aggregates across a batch of attack windows, keyed by attacked process.
 \end{itemize}
 
-The random baseline for precision@k equals the share of features in the attacked process; we report it alongside the model numbers so lift is visible at a glance.
+Formally, for an attack sample with per-feature attribution vector $a \in \mathbb{R}^{F}$, let $\mathrm{Top}_k(a)$ be the index set of the $k$ largest entries and let $\mathcal{P}^\star$ be the process under attack.  Precision@$k$ is the fraction of the top-$k$ attributed features that belong to that process,
+\begin{equation}
+  \mathrm{p}@k = \frac{\bigl|\{\, j \in \mathrm{Top}_k(a) : \mathrm{proc}(j) = \mathcal{P}^\star \,\}\bigr|}{k},
+  \label{eq:patk}
+\end{equation}
+where $\mathrm{proc}(j)$ is the process prefix of feature $j$ (the \code{P\{n\}} tag).  The random baseline for~\eqref{eq:patk} --- the expected precision of a uniform-random attribution --- equals the share of features belonging to the attacked process,
+\begin{equation}
+  \mathrm{p}@k_{\mathrm{rand}} = \frac{|\{\, j : \mathrm{proc}(j) = \mathcal{P}^\star \,\}|}{F},
+\end{equation}
+independent of $k$.  We report it alongside the model numbers so that \emph{lift} --- the ratio $\mathrm{p}@k / \mathrm{p}@k_{\mathrm{rand}}$ --- is visible at a glance; a model that localizes no better than chance sits at lift~$1$.
 
 \subsection{TranAD attention rollout}
 \label{sec:tranad-attn}
@@ -92,3 +122,66 @@ Results land in \file{results/metrics/summary.parquet} (detection) and \file{att
 \section{Tests}
 
 Mandatory for \file{evaluation/} and \file{data\_loader.py}; smoke coverage for everything else (CLAUDE.md policy).  Current suites: \file{test\_data\_loader.py}, \file{test\_preprocessing.py}, \file{test\_evaluation.py}, \file{test\_transfer.py}, \file{test\_attribution.py}, \file{test\_models\_smoke.py}.
+
+The evaluation tests are hand-computed: a small synthetic label/prediction pair whose point-wise, point-adjust, and eTaPR scores are worked out on paper and asserted exactly, so that any future refactor that silently changes a metric definition fails loudly.  This matters for the thesis claim --- ranking changes across metrics (Section~\ref{ch:results-detection}) are only credible if the metrics themselves are pinned by tests rather than reimplemented per notebook.
+
+\section{Computational complexity}
+\label{sec:complexity}
+
+The detectors span three orders of magnitude in training cost, which is the practical reason the benchmark is feasible on a single 4\,GB GPU.  Table~\ref{tab:complexity} summarises the asymptotic training and scoring cost of each model, with $n$ the number of training samples, $F$ the feature count, $w$ the window length, $d$ a representative hidden width, and $E$ the epoch count.  The classical baselines are effectively free to score; the windowed deep models dominate the wall-clock budget, which is why the reproducibility checks (\S\ref{sec:tranad-repro}) run on a $30\mathrm{k}$-window subsample rather than the full $\sim 1.5\mathrm{M}$ windows.
+
+\begin{table}[h]
+\centering
+\caption{Asymptotic training and per-sample scoring complexity of the six detectors.}
+\label{tab:complexity}
+\small
+\begin{tabular}{lll}
+\toprule
+Detector & Training & Scoring (per sample) \\
+\midrule
+Isolation Forest & $O(t\, \psi \log \psi)$ ($t$ trees, $\psi$ subsample) & $O(t \log \psi)$ \\
+One-Class SVM    & $O(n_{\mathrm{sv}}^2 F)$ to $O(n^3)$ worst case & $O(n_{\mathrm{sv}} F)$ \\
+Dense AE         & $O(E\, n\, F d)$ & $O(F d)$ \\
+LSTM-AE          & $O(E\, n\, w\, d^2)$ & $O(w\, d^2)$ \\
+USAD             & $O(E\, n\, w F d)$ & $O(w F d)$ \\
+TranAD           & $O(E\, n\, w^2 d)$ (attention) & $O(w^2 d)$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The $w^2$ term in TranAD is the self-attention cost over the $60$-step window; it is the reason TranAD is the most expensive model per epoch despite its single encoder layer, and it bounds how deep the encoder can grow on the available hardware.
+
+\section{Experiment lifecycle}
+\label{sec:lifecycle}
+
+Every reported number flows through the same five-stage pipeline regardless of which of the four drivers invokes it: load, scale (with the leak guard), fit on normal data, threshold on clean validation, and score the labelled test split under all three metrics.  Listing~\ref{lst:runner} sketches the same-dataset driver; the transfer, LOPO, and attribution drivers differ only in which bundle transformation (\eqref{eq:projection} or process-dropping) is applied between loading and scaling, and in which threshold distribution feeds~\eqref{eq:threshold}.
+
+\begin{lstlisting}[language=Python, caption={Same-dataset detection driver (abridged from \file{experiments/run.py}).}, label={lst:runner}]
+def run(cfg):
+    set_seed(cfg.seed)                      # reproducibility: one seed, recorded
+    bundle = load_dataset(cfg.dataset)      # unified DatasetBundle
+    scaled = scale_bundle(bundle)           # MinMax on TRAIN only; asserts no leak
+
+    X_tr, X_val, X_te = scaled.X_train, scaled.X_val, scaled.X_test
+    if cfg.windowed:                        # LSTM-AE / USAD / TranAD
+        X_tr  = make_windows(X_tr,  cfg.window)
+        X_val = make_windows(X_val, cfg.window)
+        X_te  = make_windows(X_te,  cfg.window)
+        y_te  = window_labels(scaled.y_test, cfg.window)
+    else:
+        y_te  = scaled.y_test
+
+    model = build_model(cfg)                # dispatch on cfg.model name
+    model.fit(X_tr, X_val)                  # normal-only fit
+
+    val_scores = model.score(X_val)
+    tau = percentile_threshold(val_scores, 99.0)   # never sees test labels
+    test_scores = model.score(X_te)
+
+    row = {"config_hash": cfg.hash, "seed": cfg.seed}
+    for metric in (pointwise_metrics, point_adjust_f1, etapr_f1):
+        row.update(metric(y_te, test_scores, tau).as_dict())
+    append_parquet("results/metrics/summary.parquet", row)
+\end{lstlisting}
+
+The single \code{set\_seed} call, the train-only scaler fit, the validation-derived threshold, and the recorded \code{config\_hash} are the four invariants that make every cell of every results table in Chapter~\ref{ch:implementation} reproducible from a committed configuration.

@@ -49,3 +49,10 @@ htmlcov/
 dist/
 build/
 *.egg-info/
+
+# Working deliverables / scratch (Word/PDF exports are regenerated, not authoritative)
+*.docx
+~$*
+/*.pdf
+presentation/*.pdf
+.tmp_r15/

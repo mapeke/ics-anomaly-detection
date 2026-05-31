@@ -1,0 +1,101 @@
+\chapter{Software implementation}
+\label{ch:implementation}
+
+This chapter presents the software implementation of the unified benchmarking apparatus described in the preceding chapter, together with the experimental results it produces.  Section~\ref{sec:impl-modules} walks through the key source modules that realise the design of Chapter~\ref{ch:method}.  Section~\ref{ch:results-detection} then reports the same-dataset detection benchmark and metric-sensitivity analysis on HAI~21.03 and Morris.  Section~\ref{ch:results-transfer} reports the cross-testbed transfer study under both source-calibrated and target-calibrated thresholds and the within-HAI leave-one-process-out control.  Section~\ref{ch:results-attribution} reports the per-sensor attribution evaluation with multi-seed sensitivity, including SHAP attribution for the two classical baselines.  Section~\ref{ch:discussion} discusses the implications of the findings, anticipated objections, and limitations.
+
+\section{Key implementation modules}
+\label{sec:impl-modules}
+
+The codebase is organised so that the design rules of Chapter~\ref{ch:method} are enforced in code rather than left to caller discipline.  This section presents the four modules that carry the most methodological weight: the detector interface that makes the six models interchangeable, the scaler-leak guard, the schema-alignment projection, and the point-adjust expansion.  The listings are abridged from the committed sources under \file{src/}.
+
+\subsection{The unified detector interface}
+
+Every model implements the abstract base class in Listing~\ref{lst:base}.  Three methods --- \code{fit}, \code{score}, \code{attribute} --- are the entire contract the experiment drivers rely on, which is what lets the same code path serve same-dataset detection, transfer, LOPO, and attribution.  \code{attribute} defaults to raising, so a model that cannot localize fails explicitly rather than silently returning a meaningless vector; \code{supports\_attribution} lets the attribution driver skip such models.
+
+\begin{lstlisting}[language=Python, caption={The \code{AnomalyDetector} abstract base class (\file{src/models/base.py}).}, label={lst:base}]
+class AnomalyDetector(ABC):
+    name: str = "AnomalyDetector"
+
+    @abstractmethod
+    def fit(self, X_train, X_val=None) -> "AnomalyDetector":
+        """Fit on normal-only data. Must never see attack rows."""
+        ...
+
+    @abstractmethod
+    def score(self, X) -> np.ndarray:
+        """Per-sample anomaly score; higher = more anomalous."""
+        ...
+
+    def attribute(self, X) -> np.ndarray:
+        """Per-feature contribution; AE family and TranAD override this."""
+        raise NotImplementedError(
+            f"{type(self).__name__} does not implement attribute().")
+
+    def supports_attribution(self) -> bool:
+        return type(self).attribute is not AnomalyDetector.attribute
+\end{lstlisting}
+
+\subsection{The scaler-leak guard}
+
+Listing~\ref{lst:scale} implements Equation~\eqref{eq:minmax}.  The first line of \code{scale\_bundle} asserts that no attack row reached the train or validation split; the scaler is then fit on the training split alone and used to transform all three splits.  Fitting before the assertion would already have leaked attack-range statistics, so the order is load-bearing.
+
+\begin{lstlisting}[language=Python, caption={Leak-guarded min--max scaling (\file{src/preprocessing.py}).}, label={lst:scale}]
+def scale_bundle(bundle: DatasetBundle) -> ScaledArrays:
+    bundle.assert_no_attack_in_train_val()   # fail loudly before fitting
+    scaler = MinMaxScaler(clip=True)
+    scaler.fit(bundle.X("train"))            # statistics from normal data only
+    return ScaledArrays(
+        X_train=scaler.transform(bundle.X("train")).astype(np.float32),
+        X_val=scaler.transform(bundle.X("val")).astype(np.float32),
+        X_test=scaler.transform(bundle.X("test")).astype(np.float32),
+        y_test=bundle.y("test"),
+        feature_names=list(bundle.features.columns),
+        scaler=scaler,
+    )
+\end{lstlisting}
+
+\subsection{The schema-alignment projection}
+
+Listing~\ref{lst:project} implements the type-aggregation operator $\Pi_d$ of Equation~\eqref{eq:projection}.  Each canonical type becomes one output column, computed by aggregating all same-typed raw features of the dataset; a type present in the target schema but absent from this dataset yields a zero column, so the model always receives a fixed-width input over the type intersection.
+
+\begin{lstlisting}[language=Python, caption={Type-vector projection for cross-testbed transfer (\file{src/transfer/schema\_align.py}).}, label={lst:project}]
+def project_dataframe(df, feat_to_type, target_types, aggregations):
+    type_to_feats = _type_to_features(feat_to_type)   # drops excluded types
+    cols = {}
+    for t in target_types:
+        feats = [f for f in type_to_feats.get(t, []) if f in df.columns]
+        if not feats:
+            cols[t] = np.zeros(len(df), dtype=np.float32)   # missing type
+            continue
+        agg = aggregations.get(t, "mean")                   # max for binary
+        block = df[feats].to_numpy(dtype=np.float32)
+        cols[t] = _AGG_FNS[agg](block, axis=1)
+    return pd.DataFrame(cols, columns=target_types).astype(np.float32)
+\end{lstlisting}
+
+\subsection{The point-adjust expansion}
+
+Listing~\ref{lst:pa} implements Equation~\eqref{eq:pa-expand}.  It walks the ground-truth series, and for every contiguous attack event in which at least one timestep was predicted positive, it flips the whole event to positive before the point-wise F1 is computed.  Isolating the expansion in one auditable function is what lets the unit tests pin the inflation effect that Section~\ref{ch:results-detection} reports.
+
+\begin{lstlisting}[language=Python, caption={Point-adjust prediction expansion (\file{src/evaluation/point\_adjust.py}).}, label={lst:pa}]
+def _expand_predictions(y_true, y_pred):
+    out = y_pred.copy()
+    in_attack, start = False, 0
+    for t in range(len(y_true)):
+        if y_true[t] == 1 and not in_attack:
+            in_attack, start = True, t
+        elif y_true[t] == 0 and in_attack:
+            if y_pred[start:t].any():        # any hit -> credit whole event
+                out[start:t] = 1
+            in_attack = False
+    if in_attack and y_pred[start:].any():
+        out[start:] = 1
+    return out
+\end{lstlisting}
+
+Together these four modules fix the methodological invariants in code: models are interchangeable behind one interface, scaling cannot leak, the cross-testbed projection has a single definition, and the most inflation-prone metric is isolated for testing.  The remaining sections of this chapter report what the apparatus produces.
+
+\input{chapters/04_results_detection}
+\input{chapters/05_results_transfer}
+\input{chapters/06_results_attribution}
+\input{chapters/07_discussion}

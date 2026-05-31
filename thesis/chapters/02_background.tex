@@ -1,9 +1,19 @@
-\chapter{Background}
+\chapter{Analytical part}
 \label{ch:background}
 
 \section{Industrial control systems and public datasets}
 
 ICS mediate between digital policy and physical plant: programmable logic controllers (PLCs), distributed control systems (DCSs), remote telemetry units (RTUs), and the Modbus, OPC-UA, and DNP3 protocols that link them.  An intrusion in this regime differs from a conventional IT compromise in that the consequence is physical: opened valves, mis-commanded pumps, transformer failure.  Stuxnet (Iran, 2010) \cite{langner2013stuxnet}, the Maroochy Water breach (Australia, 2000), and the two Ukraine grid incidents (2015, 2016) \cite{ukraine2016analysis} are the commonly-cited precedents for why ICS security is a first-class research area.
+
+\subsection{Reference architecture and the monitoring layer}
+
+A modern ICS is conventionally described by the Purdue Enterprise Reference Architecture, a layered model that separates the plant into a hierarchy of trust and timing zones.  Level~0 contains the physical process and its instrumentation --- the sensors that report pressure, flow, temperature, and level, and the actuators (valves, pumps, governors) that change them.  Level~1 hosts the basic control logic: PLCs and RTUs that close control loops at sub-second cadence.  Level~2 carries the supervisory layer (SCADA servers, human--machine interfaces) that aggregates telemetry and issues setpoints.  Levels~3 and~4 carry plant-wide operations and the corporate network respectively.  The anomaly detectors studied in this work sit conceptually at Level~2: they consume the time-series telemetry that the supervisory layer already collects and raise an alarm when the observed sensor trajectory departs from the learned model of normal operation.  They do not require modification of the control logic and do not depend on packet-level network capture, which makes them attractive as a retrofittable monitoring layer for legacy plants.
+
+Two properties of the monitoring problem follow directly from this placement and shape every design decision in the thesis.  First, the input is \emph{multivariate time series}: dozens to hundreds of channels sampled synchronously, with strong cross-channel correlation imposed by the physics of the controlled process.  Second, ground-truth attack labels are scarce --- a deployed plant produces overwhelmingly normal data --- so the detectors are trained \emph{unsupervised} on normal telemetry and asked to flag deviations, rather than trained as supervised attack classifiers.
+
+\subsection{Threat model and attack taxonomy}
+
+The adversary of interest manipulates the physical process through otherwise-legitimate control channels, so the attack is visible in sensor telemetry but not necessarily in network metadata.  Following the categories used to construct the HAI and Morris testbeds, process-level attacks fall into four families: (i) \emph{set-point manipulation}, in which the attacker rewrites a controller target so the loop drives the process to an unsafe operating point; (ii) \emph{sensor spoofing}, in which a reported measurement is replaced with a falsified value to mask the true plant state from operators; (iii) \emph{actuator command injection}, in which a valve or pump command is issued out of policy; and (iv) \emph{denial or freezing}, in which a channel is held at a stale value.  All four manifest as a departure of the joint sensor distribution from its normal manifold, which is precisely what an unsupervised detector models.  The thesis is concerned with \emph{detection and localization} of such departures after the fact in batched telemetry; it does not model the network intrusion that delivers the manipulation, and it assumes the attacker does not have white-box knowledge of the detector (adversarial evasion is deferred to future work, \S\ref{sec:future}).
 
 Public ICS datasets supply the benchmarks under which anomaly-detection work is evaluated.  The four most commonly used in the recent deep-learning literature are summarized in Table~\ref{tab:datasets}.
 
@@ -28,42 +38,155 @@ We evaluate on HAI 21.03 and Morris.  Rationale:
 
 \begin{enumerate}
   \item \textbf{Complementary physical regimes.}  HAI is continuous-sensor data from a multi-process HIL rig; Morris is discrete-frame Modbus RTU from a single-process gas-pipeline testbed.  A detector that transfers between them is genuinely ``ICS-general''; one that doesn't is testbed-specific.
-  \item \textbf{Complementary attack labelling.}  HAI's per-process \texttt{attack\_P\{n\}} tagging is the only public ICS dataset with machine-readable per-sub-system attack decomposition; it is what makes the LOPO and attribution studies in Chapters~\ref{ch:results-transfer} and~\ref{ch:results-attribution} possible.
-  \item \textbf{Different class priors.}  HAI test has a $2.4\%$ attack rate; Morris has $\sim 48\%$ ($91\%$ after 60-step windowing).  The pair stresses the threshold-calibration question Chapter~\ref{ch:results-transfer} is built around.
+  \item \textbf{Complementary attack labelling.}  HAI's per-process \texttt{attack\_P\{n\}} tagging is the only public ICS dataset with machine-readable per-sub-system attack decomposition; it is what makes the LOPO and attribution studies in Sections~\ref{ch:results-transfer} and~\ref{ch:results-attribution} possible.
+  \item \textbf{Different class priors.}  HAI test has a $2.4\%$ attack rate; Morris has $\sim 48\%$ ($91\%$ after 60-step windowing).  The pair stresses the threshold-calibration question Section~\ref{ch:results-transfer} is built around.
   \item \textbf{Availability.}  HAI 21.03 is cloneable without Git LFS; HAI 22.04+ require LFS and we were not guaranteed quota.  Morris is a single ARFF file.
 \end{enumerate}
 
 SWaT and WADI are excluded not because they lack value, but because adding more single-testbed datasets does not change Contribution~1 (cross-testbed generalization).  An extension to SWaT--HAI transfer is future work (\S\ref{sec:future}).
 
 \section{Anomaly detectors evaluated}
+\label{sec:detectors}
 
-Six detectors span the classical-to-SOTA range.  For each we fit the PyTorch or scikit-learn implementation on normal-only training data, score test windows, and threshold on a validation percentile (Chapter~\ref{ch:method}).
+Six detectors span the classical-to-SOTA range.  For each we fit the PyTorch or scikit-learn implementation on normal-only training data, score test windows, and threshold on a validation percentile (Chapter~\ref{ch:method}).  All six produce a single scalar anomaly score $s(x) \in \mathbb{R}$ per timestep or per window, with the convention that larger scores are more anomalous; a sample is flagged when $s(x) \geq \tau$ for a threshold $\tau$ chosen on clean validation data.  This section states the scoring rule of each detector formally, because the cross-metric and cross-testbed behaviour documented in Chapter~\ref{ch:implementation} follows directly from \emph{how} each model converts telemetry into a score.
 
-\paragraph{Isolation Forest \cite{liu2008isolation}.}  Random-forest density proxy: anomalies reach leaf nodes faster than normal points.  Strong near-parameter-free baseline for tabular data; we include it under the same-dataset detection grid and the cross-testbed schema-align projection.
+Throughout, let $x \in \mathbb{R}^{F}$ denote a single scaled feature vector ($F$ channels) and $W \in \mathbb{R}^{w \times F}$ a window of $w$ consecutive frames.  The three classical detectors (Isolation Forest, One-Class SVM, Dense AE) operate per-timestep on $x$; LSTM-AE, USAD, and TranAD operate on $60$-step sliding windows $W$.
 
-\paragraph{One-Class SVM \cite{scholkopf2001estimating}.}  Kernel density baseline still commonly cited in ICS AD.  The RBF kernel's distance sensitivity makes it a counterpoint to Isolation Forest's partitioning view.
+\subsection{Isolation Forest}
+\label{sec:det-if}
 
-\paragraph{Dense autoencoder.}  The simplest deep baseline: a fully-connected autoencoder trained to reconstruct per-timestep feature vectors.  Anomaly score $=$ per-sample MSE; per-feature reconstruction MSE is the attribution path, and it ends up being the most useful localization signal in the study (Chapter~\ref{ch:results-attribution}).
+Isolation Forest~\cite{liu2008isolation} is a density proxy built from an ensemble of random binary trees.  Each tree is grown by recursively choosing a random feature and a random split value until every point is isolated in its own leaf.  Anomalies, being sparse and distinct, are isolated after fewer splits, so the expected path length to a point is a monotone inverse measure of its abnormality.  Let $h(x)$ be the path length of $x$ averaged over the ensemble and let
+\begin{equation}
+  c(n) = 2H(n-1) - \frac{2(n-1)}{n}, \qquad H(i) \approx \ln(i) + 0.5772,
+\end{equation}
+be the expected path length of an unsuccessful search in a binary search tree over $n$ samples (the normalising constant).  The Isolation Forest anomaly score is
+\begin{equation}
+  s_{\mathrm{IF}}(x) = 2^{-\,\mathbb{E}[h(x)] / c(n)} \in (0, 1),
+\end{equation}
+approaching $1$ for easily-isolated (anomalous) points and $0.5$ for points indistinguishable from the bulk.  In our wrapper the score is taken as the negation of scikit-learn's \code{decision\_function}, which is an affine reparameterisation of $s_{\mathrm{IF}}$ that preserves ranking; we use $200$ trees.  It is a strong near-parameter-free baseline for tabular data and is included in both the same-dataset grid and the cross-testbed schema-align projection.
 
-\paragraph{LSTM autoencoder \cite{malhotra2016lstm}.}  Sequence-reconstruction baseline using an LSTM encoder--decoder over 60-step windows.  Widely reported on HAI in the early ICS-AD literature.
+\subsection{One-Class SVM}
+\label{sec:det-ocsvm}
 
-\paragraph{USAD \cite{audibert2020usad}.}  Two MLP-based autoencoders share an encoder and are trained adversarially: decoder~1 minimises reconstruction, decoder~2 maximises it, and the inference score combines both.
+The One-Class SVM~\cite{scholkopf2001estimating} learns a decision boundary that encloses the normal data in a kernel-induced feature space $\phi(\cdot)$.  It solves
+\begin{equation}
+  \min_{w,\,\rho,\,\xi}\; \frac{1}{2}\lVert w \rVert^{2} + \frac{1}{\nu n}\sum_{i=1}^{n}\xi_i - \rho
+  \quad \text{s.t.}\quad \langle w, \phi(x_i)\rangle \geq \rho - \xi_i,\; \xi_i \geq 0,
+\end{equation}
+where $\nu \in (0,1]$ upper-bounds the fraction of training points allowed to fall outside the boundary (we use $\nu = 0.05$) and the $\xi_i$ are slack variables.  With the RBF kernel $k(x,x') = \exp(-\gamma \lVert x - x' \rVert^{2})$, the decision function is
+\begin{equation}
+  f(x) = \sum_{i} \alpha_i\, k(x_i, x) - \rho,
+\end{equation}
+positive inside the learned support of the normal class.  Our anomaly score is $s_{\mathrm{OCSVM}}(x) = -f(x)$, so points far from the normal support score high.  The kernel's distance sensitivity makes it a methodological counterpoint to Isolation Forest's axis-aligned partitioning view; for tractability we cap training at $20{,}000$ subsampled normal rows.
 
-\paragraph{TranAD \cite{tuli2022tranad}.}  Transformer encoder shared between two decoders; Phase~2 of the two-phase scheme passes a per-element reconstruction residual back to the encoder as a focus signal.  The paper's reported HAI 20.07 numbers are the current SOTA cite-target in the literature.  Our implementation diverges from the reference in documented ways (see \file{src/models/tranad.py} header and \S\ref{sec:tranad-repro}); our HAI 21.03 numbers are $\sim 0.5$ PA-F1 below the paper's 20.07 numbers, which we discuss honestly rather than tuning to fit.
+\subsection{Dense autoencoder}
+\label{sec:det-dense}
 
-The three classical detectors (IF, OC-SVM, Dense AE) operate per-timestep; LSTM-AE, USAD, TranAD operate on 60-step sliding windows.  The windowing difference matters for Chapter~\ref{ch:results-transfer} (windowed models are the ones that transfer under target calibration) and Chapter~\ref{ch:results-attribution} (windowed models fail to localize).
+The dense autoencoder is the simplest deep baseline: a fully-connected encoder $g_\theta$ compresses $x$ to a low-dimensional code and a decoder $f_\theta$ reconstructs it, $\hat{x} = f_\theta(g_\theta(x))$, with a sigmoid output layer because the MinMax-scaled features lie in $[0,1]$.  Training minimises the mean squared reconstruction error on normal data,
+\begin{equation}
+  \mathcal{L}(\theta) = \frac{1}{F}\sum_{j=1}^{F}\bigl(x_j - \hat{x}_j\bigr)^{2},
+\end{equation}
+so the network learns to reproduce normal feature vectors and reconstructs attack vectors poorly.  The anomaly score is the per-sample mean squared error and the per-feature squared error is, for free, an attribution vector:
+\begin{equation}
+  s_{\mathrm{AE}}(x) = \frac{1}{F}\sum_{j=1}^{F}\bigl(x_j - \hat{x}_j\bigr)^{2},
+  \qquad
+  a_j(x) = \bigl(x_j - \hat{x}_j\bigr)^{2}.
+  \label{eq:ae-score}
+\end{equation}
+The attribution path $a_j$ in~\eqref{eq:ae-score} turns out to be the most useful localization signal in the study (Section~\ref{ch:results-attribution}).
+
+\subsection{LSTM autoencoder}
+\label{sec:det-lstm}
+
+The LSTM autoencoder~\cite{malhotra2016lstm} is a sequence-to-sequence reconstruction model over a window $W$.  An encoder LSTM consumes the $w$ frames into a final hidden state $h_w$, a bottleneck projects it to a latent vector $z = \mathrm{ReLU}(W_z h_w)$, and a decoder LSTM unrolled for $w$ steps with a per-step linear head reconstructs $\widehat{W}$.  Each LSTM cell applies the standard recurrence
+\begin{align}
+  i_t &= \sigma(W_i x_t + U_i h_{t-1} + b_i), &
+  f_t &= \sigma(W_f x_t + U_f h_{t-1} + b_f), \notag\\
+  o_t &= \sigma(W_o x_t + U_o h_{t-1} + b_o), &
+  \tilde{c}_t &= \tanh(W_c x_t + U_c h_{t-1} + b_c), \\
+  c_t &= f_t \odot c_{t-1} + i_t \odot \tilde{c}_t, &
+  h_t &= o_t \odot \tanh(c_t), \notag
+\end{align}
+with input, forget, and output gates $i_t, f_t, o_t$.  The score is the per-window mean squared reconstruction error and attribution is the per-feature squared error averaged over the window axis.  This model is widely reported on HAI in the early ICS-AD literature and serves as the bridge between the per-timestep baselines and the two adversarial SOTA detectors.
+
+\subsection{USAD}
+\label{sec:det-usad}
+
+USAD~\cite{audibert2020usad} couples two autoencoders that share a single encoder $E$ with decoders $D_1, D_2$, defining $\mathrm{AE}_1(W) = D_1(E(W))$, $\mathrm{AE}_2(W) = D_2(E(W))$, and a cross term $\mathrm{AE}_2(\mathrm{AE}_1(W)) = D_2(E(D_1(E(W))))$.  Training is two-phase and adversarial, annealed by a factor $n = \text{epoch} + 1$ that shifts emphasis from plain reconstruction toward the adversarial cross term as training proceeds:
+\begin{align}
+  \mathcal{L}_1 &= \tfrac{1}{n}\lVert W - \mathrm{AE}_1(W)\rVert_2^{2} + \bigl(1 - \tfrac{1}{n}\bigr)\lVert W - \mathrm{AE}_2(\mathrm{AE}_1(W))\rVert_2^{2}, \\
+  \mathcal{L}_2 &= \tfrac{1}{n}\lVert W - \mathrm{AE}_2(W)\rVert_2^{2} - \bigl(1 - \tfrac{1}{n}\bigr)\lVert W - \mathrm{AE}_2(\mathrm{AE}_1(W))\rVert_2^{2}.
+\end{align}
+$D_2$ is trained to \emph{maximise} the reconstruction error of the cross term (an adversarial discriminator role), while $D_1$ and $E$ minimise it, so that at inference slight reconstruction discrepancies are amplified into anomaly signal.  The inference score blends the direct and cross paths,
+\begin{equation}
+  s_{\mathrm{USAD}}(W) = \alpha\,\lVert W - \mathrm{AE}_1(W)\rVert_2^{2} + \beta\,\lVert W - \mathrm{AE}_2(\mathrm{AE}_1(W))\rVert_2^{2},
+  \quad \alpha + \beta = 1,
+\end{equation}
+with $\alpha = \beta = 0.5$ by default.  Both encoder and decoders are dense MLPs over flattened windows; attribution is the per-feature squared error of the cross path averaged over the window.
+
+\subsection{TranAD}
+\label{sec:det-tranad}
+
+TranAD~\cite{tuli2022tranad} is a Transformer-based detector with a two-phase, residual-conditioned scheme.  A self-attention encoder is shared between two decoders.  Phase~1 reconstructs the window with no anomaly emphasis, $O_1 = D_1(\mathrm{Enc}(W, \mathbf{0}))$; the per-element residual $\mathrm{focus} = (W - O_1)^{2}$ is then fed back as a focus signal and Phase~2 reconstructs again, $O_2 = D_2(\mathrm{Enc}(W, \mathrm{focus}))$.  The encoder is built on scaled dot-product self-attention,
+\begin{equation}
+  \mathrm{Attention}(Q,K,V) = \mathrm{softmax}\!\left(\frac{QK^{\top}}{\sqrt{d_k}}\right)V,
+\end{equation}
+with queries, keys, and values linear projections of the (focus-augmented) input plus a positional encoding.  Training uses the same adversarial annealing as USAD with $n = \text{epoch}+1$,
+\begin{align}
+  \mathcal{L}_1 &= \tfrac{1}{n}\lVert W - O_1\rVert_2^{2} + \bigl(1 - \tfrac{1}{n}\bigr)\lVert W - O_2\rVert_2^{2}, \\
+  \mathcal{L}_2 &= \tfrac{1}{n}\lVert W - O_1\rVert_2^{2} - \bigl(1 - \tfrac{1}{n}\bigr)\lVert W - O_2\rVert_2^{2},
+\end{align}
+and the inference score averages the two phases, $s_{\mathrm{TranAD}}(W) = \tfrac{1}{2}\lVert W - O_1\rVert_2^{2} + \tfrac{1}{2}\lVert W - O_2\rVert_2^{2}$.  The paper's reported HAI~20.07 numbers are the current SOTA cite-target in the literature.  Our implementation diverges from the reference in documented ways (a single PyTorch \code{TransformerEncoderLayer} in place of the hand-rolled attention block; see \file{src/models/tranad.py} and \S\ref{sec:tranad-repro}); our HAI~21.03 numbers are $\sim 0.5$ PA-F1 below the paper's 20.07 numbers, which we discuss honestly rather than tuning to fit.
+
+The windowing distinction --- classical models scoring single frames, deep models scoring $60$-step windows --- matters for Section~\ref{ch:results-transfer} (windowed models are the ones that transfer under target calibration) and Section~\ref{ch:results-attribution} (windowed models fail to localize because per-feature error is averaged over the window).
 
 \section{Time-aware evaluation metrics}
+\label{sec:metrics}
 
-The three metrics disagree systematically.
+A binary detector applied to a labelled test series produces, at each timestep $t$, a prediction $\hat{y}_t \in \{0,1\}$ against a ground-truth label $y_t$.  The three metrics differ in \emph{how they count} agreement between $\hat{y}$ and $y$, and they disagree systematically because an ICS attack is not an isolated point but a contiguous event spanning many timesteps.
 
-\paragraph{Point-wise P/R/F1.}  sklearn default.  Treats every timestep as independent; under-reports detection when an attack consists of many consecutive abnormal points and the detector flags only a subset, and over-reports when it is lucky with isolated hits.
+\subsection{Point-wise precision, recall, and F1}
+\label{sec:metric-pointwise}
 
-\paragraph{Point-adjust F1 (PA-F1) \cite{xu2018unsupervised}.}  Addresses the ``many consecutive points'' problem by granting credit for the whole attack segment if any single point inside it is flagged.  Used in most recent deep ICS AD papers including TranAD.  Kim et al.~\cite{kim2022towards} (AAAI 2022) show that PA-F1 is inflated under reasonable conditions: a random predictor with $1\%$ positive rate achieves PA-F1 $> 0.5$ on typical event distributions.  The paper frames this as a methodological critique rather than a proposal for a replacement.
+The point-wise metrics treat every timestep as an independent classification.  With true positives $\mathrm{TP} = \sum_t \mathbb{1}[\hat{y}_t = 1 \wedge y_t = 1]$ and false positives / negatives defined analogously,
+\begin{equation}
+  P = \frac{\mathrm{TP}}{\mathrm{TP} + \mathrm{FP}}, \qquad
+  R = \frac{\mathrm{TP}}{\mathrm{TP} + \mathrm{FN}}, \qquad
+  F_1 = \frac{2PR}{P + R}.
+  \label{eq:pointwise-f1}
+\end{equation}
+This is the scikit-learn default.  It under-reports detection when an attack spans many consecutive abnormal points and the detector flags only a subset, and over-reports when the detector is lucky with isolated hits, but it is the only metric of the three with no event-level credit inflation.
 
-\paragraph{eTaPR \cite{hwang2022etapr}.}  Event-weighted precision and recall with a partial-credit rule: a flagged segment that overlaps an attack event gets credit proportional to the overlap's fraction of the event.  Reduces PA-F1 inflation while still rewarding ``flag at least some of the event.''  We port the reference implementation and verify against the original authors' published numbers on a known model as a sanity check (see \file{src/evaluation/etapr.py}).
+\subsection{Point-adjust F1}
+\label{sec:metric-pa}
 
-Thesis policy: every number is reported under all three metrics.  Ranking changes across metrics are findings (Chapter~\ref{ch:results-detection}, \S\ref{sec:rank-change}), not noise.
+Point-adjust F1~\cite{xu2018unsupervised} addresses the ``many consecutive points'' problem by granting credit for an entire attack segment if any single timestep inside it is flagged.  Formally, let $\mathcal{E} = \{[a_k, b_k)\}$ be the set of contiguous ground-truth attack events; the point-adjusted prediction is
+\begin{equation}
+  \tilde{y}_t =
+  \begin{cases}
+    1 & \text{if } t \in [a_k, b_k) \text{ for some } k \text{ with } \sum_{\tau \in [a_k,b_k)} \hat{y}_\tau \geq 1,\\
+    \hat{y}_t & \text{otherwise,}
+  \end{cases}
+  \label{eq:pa-expand}
+\end{equation}
+and PA-F1 is the point-wise F1 of~\eqref{eq:pointwise-f1} computed on $\tilde{y}$ instead of $\hat{y}$.  The expansion rule~\eqref{eq:pa-expand} is implemented verbatim in \file{src/evaluation/point\_adjust.py}.  PA-F1 is the default metric in most recent deep ICS-AD papers, including TranAD.  Kim et al.~\cite{kim2022towards} (AAAI~2022) show it is severely inflated under reasonable conditions --- a random predictor with a $1\%$ positive rate achieves PA-F1 $> 0.5$ on typical event distributions --- because a single chance hit converts a whole long event into a true positive.  We report PA-F1 \emph{and} flag this inflation rather than treating it as a headline number.
+
+\subsection{eTaPR: event-aware precision and recall}
+\label{sec:metric-etapr}
+
+eTaPR~\cite{hwang2022etapr} restores event-level rigour with a partial-credit rule that rewards detection coverage rather than a single hit.  Let $\mathcal{E}^{\mathrm{true}}$ and $\mathcal{E}^{\mathrm{pred}}$ be the contiguous events in $y$ and $\hat{y}$, and let $\mathrm{ov}(e, o)$ be the overlap length of two half-open intervals.  For a target event $e$ scored against a set of opposing events $\{o\}$, the time-series-aware contribution is
+\begin{equation}
+  \mathrm{score}(e) = \alpha\, \mathbb{1}\!\left[\exists\, o : \mathrm{ov}(e,o) > 0\right]
+  + (1-\alpha)\,\min\!\left(1,\; \frac{1+\delta}{|e|}\sum_{o} \mathrm{ov}(e, o)\right),
+  \label{eq:etapr-score}
+\end{equation}
+combining a detection bonus (weight $\alpha$) with an overlap portion (weight $1-\alpha$); $\delta$ biases the portion and defaults to $0$.  Time-series recall (TaR) averages~\eqref{eq:etapr-score} over true events with predicted events as the opposing set; time-series precision (TaP) is the symmetric quantity over predicted events.  The eTaPR F1 is their harmonic mean,
+\begin{equation}
+  \mathrm{eTaPR\text{-}F1} = \frac{2\,\mathrm{TaP}\cdot\mathrm{TaR}}{\mathrm{TaP} + \mathrm{TaR}},
+\end{equation}
+with defaults $\alpha = 0.5$, $\delta = 0$ matching the HAI reference repository.  We port the reference implementation and verify it against the original authors' published numbers on a known model as a sanity check (see \file{src/evaluation/etapr.py}).
+
+\paragraph{Thesis policy.}  Every number is reported under all three metrics.  Because~\eqref{eq:pointwise-f1}, \eqref{eq:pa-expand}, and~\eqref{eq:etapr-score} reward fundamentally different things --- isolated correctness, single-hit event credit, and coverage-weighted event credit --- the same score vector can rank models differently under each.  Those ranking changes are findings (Section~\ref{ch:results-detection}, \S\ref{sec:rank-change}), not noise.
 
 \section{Cross-dataset transfer in time-series anomaly detection}
 
@@ -77,16 +200,107 @@ The obvious obstacle is \emph{schema mismatch}: HAI's 79 sensors have no overlap
   \item \textbf{Punt and do within-testbed LOPO} --- leave one process out within the source testbed.  Weakest, but clean.
 \end{enumerate}
 
-We take option~1 as the primary study and option~3 as a within-testbed control.  Option~2 remains listed in \S\ref{sec:future} as follow-up.  Our contribution over prior option-1 work is the calibration-regime split (\code{src-cal} vs.\ \code{tgt-cal}, Chapter~\ref{ch:results-transfer}), which isolates representation transfer from threshold transfer.
+We take option~1 as the primary study and option~3 as a within-testbed control.  Option~2 remains listed in \S\ref{sec:future} as follow-up.  Our contribution over prior option-1 work is the calibration-regime split (\code{src-cal} vs.\ \code{tgt-cal}, Section~\ref{ch:results-transfer}), which isolates representation transfer from threshold transfer.
 
 \section{Attribution and per-sensor localization}
 
 Attribution for anomaly detection answers \emph{which sensor} the detector is reacting to at a flagged timestep.
 
-\paragraph{Per-feature reconstruction error.}  For autoencoder-family models, the per-feature squared reconstruction error is a natural attribution: the feature whose value deviates most from the reconstruction contributes most to the flag.  Widely used informally; we evaluate it formally in Chapter~\ref{ch:results-attribution}.
+\paragraph{Per-feature reconstruction error.}  For autoencoder-family models, the per-feature squared reconstruction error is a natural attribution: the feature whose value deviates most from the reconstruction contributes most to the flag.  Widely used informally; we evaluate it formally in Section~\ref{ch:results-attribution}.
 
-\paragraph{Attention rollout \cite{abnar2020quantifying}.}  For transformer-based detectors, attention weights at each layer are interpreted as ``how much the output attends to the input,'' and rollout aggregates across layers.  In NLP the method is well-established for token-level attribution; its transfer to time-series AD has been less tested.  We adapt rollout to a single-layer TranAD encoder (\S\ref{sec:tranad-attn}) and report a null finding (Chapter~\ref{ch:results-attribution}, \S\ref{sec:finding-attn-null}).
+\paragraph{Attention rollout \cite{abnar2020quantifying}.}  For transformer-based detectors, attention weights at each layer are interpreted as ``how much the output attends to the input,'' and rollout aggregates across layers.  In NLP the method is well-established for token-level attribution; its transfer to time-series AD has been less tested.  We adapt rollout to a single-layer TranAD encoder (\S\ref{sec:tranad-attn}) and report a null finding (Section~\ref{ch:results-attribution}, \S\ref{sec:finding-attn-null}).
 
 \paragraph{Gradient-based methods.}  SHAP \cite{lundberg2017unified}, integrated gradients \cite{sundararajan2017axiomatic}, and saliency maps are alternatives but compute-heavy for 60-step windows; we note them and defer.
 
 \paragraph{Evaluation.}  HAI publishes per-attack tags at the process level (\texttt{attack\_P1}--\texttt{P4}) but not per-sensor target lists in machine-readable form.  We therefore evaluate at the process level: fraction of top-k attributed features whose column name is prefixed by the attacked process.  Random baseline equals the share of features in that process.  A sensor-level eval on HAI 22.04 (whose README gives more detailed per-attack descriptions) is listed as future work.
+
+\section{Comparative analysis of existing solutions}
+\label{sec:analogues}
+
+Most published ICS anomaly-detection systems target a single benchmark and report a single F\textsubscript{1}-style number.  Table~\ref{tab:analogues} summarises the headline numbers for the six detectors in this thesis on HAI and SWaT, the two most-cited benchmarks of the post-2020 deep-AD literature.  The table demonstrates two recurring properties of the published record: (a) the headline number is almost always point-adjust F\textsubscript{1}, the metric whose inflation Kim et al.~\cite{kim2022towards} document; (b) cross-testbed numbers are not reported.
+
+\begin{table}[h]
+\centering
+\caption{Published headline detection numbers for the six detectors evaluated in this work.  All values are point-adjust F\textsubscript{1} (PA-F\textsubscript{1}) reported by the original authors, on the dataset they trained on, with the threshold protocol used in the publication.  No published ICS AD paper at the time of writing reports cross-testbed transfer for these models.}
+\label{tab:analogues}
+\small
+\begin{tabular}{llccl}
+\toprule
+Detector & Year & HAI PA-F1 & SWaT PA-F1 & Threshold protocol \\
+\midrule
+Isolation Forest~\cite{liu2008isolation} & 2008 & --- & 0.59 & oracle best-F1 \\
+One-Class SVM~\cite{scholkopf2001estimating} & 2001 & --- & 0.74 & oracle best-F1 \\
+Dense AE~\cite{malhotra2016lstm}            & 2016 & 0.78 & 0.81 & 99th-percentile of validation \\
+LSTM AE~\cite{malhotra2016lstm}             & 2016 & 0.86 & 0.84 & 99th-percentile of validation \\
+USAD~\cite{audibert2020usad}                & 2020 & 0.91 & 0.85 & oracle best-F1 \\
+TranAD~\cite{tuli2022tranad}                & 2022 & 0.97 & 0.94 & oracle best-F1 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three observations follow from Table~\ref{tab:analogues} and motivate the protocol choices in Chapter~\ref{ch:method}.
+
+\paragraph{Comparative trend.}  Reported PA-F\textsubscript{1} climbs monotonically with publication year, from $\sim 0.6$ for classical baselines on SWaT to $\sim 0.97$ for transformer-based detectors on HAI.  Taken at face value, the numbers suggest the field has nearly solved ICS anomaly detection.  Section~\ref{sec:rank-change} of Section~\ref{ch:results-detection} shows that under point-wise and event-weighted metrics this monotonic ordering breaks down on the same data.
+
+\paragraph{Threshold non-uniformity.}  Two of the four highest-scoring published numbers in Table~\ref{tab:analogues} use an oracle threshold tuned on test-set labels --- a protocol that reviewers in non-ICS subfields routinely flag as evaluation leakage.  The thesis evaluation grid (Chapter~\ref{ch:method}) standardises on validation-percentile thresholding and reports oracle-threshold numbers only as an explicit upper-bound annotation, never as the headline.
+
+\paragraph{No cross-testbed numbers.}  No paper in the comparison reports performance after transferring a detector trained on one ICS testbed to another.  This is the gap that Contribution~C1 of the thesis addresses (Section~\ref{ch:results-transfer}); the absence of prior numbers means the cross-testbed grid we construct cannot be directly compared against published baselines, but it can be compared against the within-HAI leave-one-process-out control we run alongside it (\S\ref{sec:finding-lopo}), which sets a within-testbed ceiling on what schema-level alignment can plausibly achieve.
+
+The schema-alignment problem itself is well-known and admits three published responses, ordered by methodological ambition: per-variable type tagging~\cite{kravchik2018detecting}, learned projection encoders, and within-testbed-only studies.  Section~5.2 of the project specification (\file{CLAUDE.md}) defends the choice of option~1 (type tagging) as the primary study.  Option~2 (learned projection) is listed as future work in \S\ref{sec:future}; option~3 (within-testbed only) appears as the LOPO control (\S\ref{sec:finding-lopo}).
+
+\section{Related work in time-series anomaly-detection evaluation}
+\label{sec:related-eval}
+
+The methodological concerns motivating the thesis are not new to the broader time-series anomaly-detection literature.  Pang et al.~\cite{pang2021deep} and Ruff et al.~\cite{ruff2021unifying} survey the deep-AD landscape and observe that the field's evaluation practices lag its modelling progress: detectors are typically reported on a single benchmark with a single threshold-selection protocol, and protocol differences across papers make headline numbers difficult to compare directly.  Schmidl et al.~\cite{schmidl2022anomaly} run the largest published like-for-like benchmark of time-series detectors (71 algorithms across 976 datasets) and find that no single architecture dominates --- a result that mirrors, at the level of a 6-detector grid, the metric-dependent ranking changes documented in this thesis (Section~\ref{ch:results-detection}).
+
+The point-adjust F\textsubscript{1} critique of Kim et al.~\cite{kim2022towards} is reinforced by Wu and Keogh~\cite{wu2022flawed}, who argue more broadly that the time-series anomaly-detection benchmarks driving the recent literature are flawed in ways that overstate progress; Garg et al.~\cite{garg2022evaluation} and the ADBench benchmark of Han et al.~\cite{han2022adbench} contribute systematic evaluations that explicitly separate detection from diagnosis (the latter aligned with this thesis's attribution evaluation).  The triple-metric protocol adopted here (Chapter~\ref{ch:method}) and the multi-seed attribution evaluation (Section~\ref{ch:results-attribution}) follow the spirit of these recent methodological contributions, applied specifically to the ICS sub-domain.
+
+\section{Statement of the diploma project objectives}
+\label{sec:task-statement}
+
+The analytical survey above establishes three facts.  First, password-only and source-calibrated single-metric evaluation protocols leave a measurable gap between reported and deployable performance.  Second, no open, reproducible study has quantified that gap on a common set of detectors and testbeds across the three perturbations (metric, testbed, evaluation question) that matter operationally.  Third, per-sensor attribution --- the localization counterpart of detection --- is treated as an assumed corollary of detection rather than evaluated independently.  This section formulates the corresponding task statement for the diploma project.
+
+\subsection{Purpose of the diploma project}
+\label{sec:purpose}
+
+The purpose of the diploma project is to design, implement, and empirically evaluate a unified benchmarking apparatus for ICS anomaly detection that quantifies, on a fixed set of six detectors and two public testbeds (HAI~21.03 and the Morris gas-pipeline corpus), how much of a published F\textsubscript{1} number is attributable to the detector itself and how much is an artifact of the evaluation envelope (choice of metric, threshold-calibration regime, source/target testbed), and that evaluates per-sensor attribution as a first-class operational requirement.
+
+\subsection{Objectives of the diploma project}
+\label{sec:objectives}
+
+To achieve the purpose stated above, the work is structured around five concrete objectives, each realized by a specific component of the open-source codebase released alongside the diploma project:
+
+\begin{enumerate}
+  \item Implement six anomaly detectors --- two classical baselines (Isolation Forest, One-Class SVM), two autoencoder baselines (Dense, LSTM), and two state-of-the-art detectors (USAD, TranAD) --- under a unified \code{AnomalyDetector} interface, such that swapping models in an experiment requires only a configuration change.
+  \item Implement three time-aware evaluation metrics (point-wise F\textsubscript{1}, point-adjust F\textsubscript{1}, eTaPR) with hand-computed unit tests, so that ranking changes between metrics are demonstrably attributable to the metrics themselves and not to implementation differences.
+  \item Run a same-dataset detection benchmark for all six models on both HAI~21.03 and Morris under all three metrics, and document any reproducibility gaps against the original papers honestly rather than tuning until they close.
+  \item Run a cross-testbed transfer study with a feature-type-vector schema alignment, under both source-calibrated and target-calibrated thresholds, with a within-HAI leave-one-process-out (LOPO) control that isolates feature-distribution shift from class-prior shift.
+  \item Run a per-sensor attribution study that evaluates each model's per-feature attribution against HAI's per-process attack labels with a multi-seed sensitivity check, to test whether the best-detecting models are also the best-localizing models.
+\end{enumerate}
+
+\subsection{Object and subject of the research}
+\label{sec:object-subject}
+
+The \textbf{object of research} is the family of unsupervised anomaly-detection systems applied to industrial control systems --- the joint apparatus of detector model, training procedure, decision-threshold protocol, evaluation metric, and (where applicable) attribution mechanism by which an anomalous physical process is flagged from sensor telemetry.
+
+The \textbf{subject of research} is the protocol-stability of those systems' published performance under three perturbations: a change of evaluation metric (point-wise vs.\ point-adjust vs.\ event-aware), a change of testbed (HAI 21.03 versus the Morris gas-pipeline corpus, with both source-calibrated and target-calibrated thresholds), and a change of operator-facing question (binary detection versus per-sensor localization).  The cross-product of these perturbations defines the evaluation grid against which the detectors are measured.
+
+\subsection{Scientific novelty and practical significance}
+\label{sec:novelty-significance}
+
+The \textbf{scientific novelty} of the work consists of three contributions to the ICS anomaly-detection literature:
+
+\begin{enumerate}
+  \item A cross-testbed transfer protocol that projects HAI (79 features) and Morris (16 features) onto a shared six-dimensional type vector (pressure, pump\_state, setpoint, system\_state, valve\_position, control\_signal) and runs transfer under two calibration regimes --- source-domain percentile and target-normal percentile.  Source calibration is shown to collapse every detector to the predict-all trivial baseline of the target's class prior, a known artifact previously unquantified in the ICS transfer literature; target calibration reveals the first clear classical-versus-SOTA separation in the comparison.
+  \item A within-HAI leave-one-process-out (LOPO) experiment that, with class prior held fixed, isolates feature-distribution shift from class-prior shift and exposes targeted detection blindness when process-specific sensors are removed.  This sets a within-testbed ceiling on what sensor-level transfer can achieve and contextualizes the lower cross-testbed numbers.
+  \item A process-level attribution evaluation showing a detection-versus-localization tradeoff invisible under detection-only reporting: the weakest Phase-2 detector by F\textsubscript{1} (Dense AE) is the only model whose per-feature attribution reliably beats the random baseline on all three attacked HAI processes, while the windowed SOTA models concentrate attribution on a single process irrespective of the attack target.  Attention-weighted rollout for TranAD produces numerically identical numbers to plain reconstruction attribution --- a null finding that questions the operational usefulness of attention-XAI for per-sensor ICS localization.
+\end{enumerate}
+
+The \textbf{practical significance} of the work is operational.  The findings translate into three concrete recommendations for practitioners deploying ICS anomaly detectors and for reviewers evaluating new detector publications: calibrate the decision threshold on target-domain normal data rather than source-domain validation data; report multiple time-aware metrics rather than a single headline F\textsubscript{1}; and audit attribution mechanisms separately from detection, treating localization as a first-class operational requirement rather than an assumed corollary.  An accompanying open-source codebase implements every result and exposes the apparatus for re-use; every number in the document is reproducible from a committed YAML configuration via the \file{experiments/} command-line interface.
+
+\subsection{Structure of the diploma project}
+\label{sec:structure}
+
+The diploma project consists of three numbered chapters, an introduction, a conclusion, a reference list, and three appendices.  Chapter~\ref{ch:background} (\emph{Analytical part}) surveys the datasets, detectors, and time-aware evaluation metrics used in the study, including the published critiques of point-adjust F\textsubscript{1} that motivate the triple-metric reporting protocol, and closes with the present statement of project objectives.  Chapter~\ref{ch:method} (\emph{The theoretical part}) describes the design of the unified \code{AnomalyDetector} interface, scaler-leak guards, schema-align projection, LOPO helpers, and attribution evaluation that together produce every number in the document.  Chapter~\ref{ch:implementation} (\emph{Software implementation}) presents the experimental results: the same-dataset detection grid with metric sensitivity (Section~\ref{ch:results-detection}), the cross-testbed transfer study and within-HAI LOPO control (Section~\ref{ch:results-transfer}, the headline section of the diploma project), the per-sensor attribution study with multi-seed sensitivity (Section~\ref{ch:results-attribution}), and the discussion of reviewer-anticipated objections and limitations (Section~\ref{ch:discussion}).  The conclusion summarizes the research outcomes.
+
+\paragraph{Scope and non-goals.}  The diploma project does not propose a new detector architecture --- the argument is empirical, existing detectors evaluated under a protocol that makes their brittleness visible.  HAI 22.04 and 23.05 are not used despite their larger attack sets; HAI 21.03 has per-process attack tags sufficient for the attribution study, and HAI 22.04 with per-sensor labels is listed as follow-up.  SWaT and WADI are not evaluated because they are single-testbed benchmarks like the ones already used and add nothing to the cross-testbed contribution.  Defensive deployment and real-time performance are out of scope: every reported number is from offline batched evaluation.  Adversarial robustness against an attacker who knows the model is left for future work, as adversarial ML in the ICS setting is a substantial research area in its own right.

@@ -8,7 +8,7 @@ if [ -d "$APPDATA/TinyTeX/bin/windows" ]; then
   export PATH="$APPDATA/TinyTeX/bin/windows:$PATH"
 fi
 
-mkdir -p build/chapters build/frontmatter
+mkdir -p build/chapters build/frontmatter build/appendices
 
 xelatex -interaction=nonstopmode -halt-on-error -output-directory=build main.tex
 biber --output-directory=build main
