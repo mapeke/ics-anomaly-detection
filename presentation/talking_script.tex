@@ -1,0 +1,152 @@
+% Verbatim 15-minute talking script for the ICS Anomaly Detection defense.
+% Build:  pdflatex talking_script.tex
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=2.3cm]{geometry}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{parskip}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{tcolorbox}
+\usepackage{fancyhdr}
+
+\definecolor{navy}{RGB}{15,42,74}
+\definecolor{teal}{RGB}{18,154,142}
+\definecolor{muted}{RGB}{91,102,112}
+\definecolor{lightbg}{RGB}{242,245,248}
+
+\newcommand{\spk}[1]{{\color{teal}\bfseries #1}}
+
+% slide-header command:  \slide{n}{Title}{Speaker}{time window}{duration}
+\newcounter{slidenum}
+\newcommand{\slide}[5]{%
+  \medskip
+  \noindent\colorbox{navy}{\parbox{\dimexpr\textwidth-2\fboxsep}{%
+    \color{white}\bfseries Slide #1 \;\textbar\; #2
+    \hfill {\normalfont\color{lightbg}\small #4 \,(#5)}}}\\[2pt]
+  \noindent{\color{teal}\small\textbf{Speaker: #3}}\par\vspace{2pt}%
+}
+
+\newtcolorbox{cut}{colback=lightbg,colframe=muted,boxrule=0.4pt,left=6pt,right=6pt,top=4pt,bottom=4pt,arc=2pt}
+
+\pagestyle{fancy}\fancyhf{}
+\lhead{\small\color{muted}ICS Anomaly Detection --- Defense Talking Script}
+\rhead{\small\color{muted}\thepage}
+\renewcommand{\headrulewidth}{0.3pt}
+
+\begin{document}
+
+\begin{center}
+{\LARGE\bfseries\color{navy} Defense Talking Script}\\[4pt]
+{\large ICS Anomaly Detection for Cyber-Physical Security}\\[6pt]
+{\color{muted} Verbatim, paced for 15:00 \;\textbar\; 18 slides \;\textbar\; IITU, Almaty 2026}
+\end{center}
+
+\vspace{4pt}
+\begin{tcolorbox}[colback=lightbg,colframe=teal,boxrule=0.8pt,arc=2pt]
+\textbf{How to use this script.} Read the bold text verbatim, or use it as a confident prompt --- whichever feels natural in rehearsal. Each slide shows the running time and a per-slide budget; if you are behind, the \textbf{\color{muted}grey ``cut if running long''} lines are the safe things to drop. \\[4pt]
+\textbf{Speaker split (suggested).} \spk{Danial} opens and sets up the problem (slides 1--6); \spk{Laura} presents the methodology and detection/transfer results (slides 7--14); \spk{Galiya} presents attribution, the findings, and closes (slides 15--18). Slide 11 (the code) can move to Danial if you prefer --- it is his module. \\[4pt]
+\textbf{Pacing.} About 140 words per minute. Pause for a beat after each slide change. Do not read the figures aloud --- point at them.
+\end{tcolorbox}
+
+% ===================================================================== 1
+\slide{1}{Title}{Danial}{0:00--0:40}{40 s}
+Good morning. Thank you for being here. My name is Danial Zainiddin, and together with my teammates Laura Imankozhayeva and Galiya Bekisheva, under the supervision of Mr. Nurlybayev, we present our diploma project: \textit{ICS Anomaly Detection for Cyber-Physical Security}. Over the next fifteen minutes we will show why the impressive accuracy numbers reported in this field are largely misleading --- and what an honest evaluation looks like instead.
+
+% ===================================================================== 2
+\slide{2}{Team composition \& roles}{Danial}{0:40--1:30}{50 s}
+First, who did what. The project has three contributions, and each of us owned one. I led the engineering: the unified detector interface, the six models, and the experiment infrastructure that makes every result reproducible. Laura owned the data side and the evaluation: the loaders, the three time-aware metrics, and the cross-testbed transfer study. Galiya owned the attribution work --- figuring out \textit{which} sensor each model blames --- together with the scoring pipeline and the write-up. Mr. Nurlybayev advised on scope and methodology throughout.
+
+% ===================================================================== 3
+\slide{3}{Why this matters}{Danial}{1:30--2:40}{70 s}
+Let me set the stage. Most people think of cybersecurity as stolen passwords or ransomware. But there is another half of the field that protects \textit{physical} infrastructure --- water treatment, power grids, gas pipelines, chemical plants. These are run by Industrial Control Systems: hundreds of sensors measuring pressure, flow, and valve positions, feeding small computers that drive pumps and breakers.
+
+When someone attacks one of these systems, the damage is physical. Stuxnet physically destroyed centrifuges in 2010 while the operators' screens showed perfectly normal readings. In 2015, attackers tripped breakers on the Ukrainian power grid and blacked out a quarter of a million people in winter. In 2000, in Australia, a man with a stolen radio opened sewage valves and spilled a million litres into public waterways.
+
+\begin{cut}\textit{Cut if running long:} drop the Maroochy Shire example; keep Stuxnet and Ukraine.\end{cut}
+And here is the key point: in every one of these cases, the attack \textit{was} visible in the sensor data --- if someone had been watching the right pattern. Teaching a computer to watch that pattern is called anomaly detection, and it is what this thesis is about.
+
+% ===================================================================== 4
+\slide{4}{Task statement}{Danial}{2:40--3:50}{70 s}
+So here is our thesis in one sentence. Detectors in this field report very high accuracy on the dataset they were trained on --- but two things break that number. First, their ranking changes completely depending on which evaluation metric you use. And second, they fail to generalize: a model trained in one factory does not work in another. Both problems are hidden behind the headline numbers in the literature.
+
+To prove this, we set ourselves six concrete objectives. We surveyed the field. We implemented six detectors behind one common interface. We implemented three evaluation metrics with unit tests. We ran a cross-testbed transfer study in both directions, with a controlled leave-one-process-out experiment. We evaluated per-sensor attribution against real attack labels. And finally, we turned all of this into practical recommendations and a reproducible toolkit. The rest of the talk follows these objectives.
+
+% ===================================================================== 5
+\slide{5}{The two testbeds}{Danial}{3:50--4:40}{50 s}
+We used two public datasets, chosen precisely because they are \textit{nothing} alike. HAI is a Korean power-plant testbed: seventy-nine sensors across four interconnected processes, sampled once per second. Morris is a gas-pipeline testbed: only sixteen features from Modbus traffic, sub-second, with no timestamps. Crucially, they share \textit{zero} sensors in common --- they are not even measuring the same kinds of things. That mismatch is exactly what makes transferring a model between them hard, and it is the heart of our main contribution. Laura will return to how we bridged it.
+
+% ===================================================================== 6
+\slide{6}{Six detectors, one interface}{Danial}{4:40--5:30}{50 s}
+We compared six detectors spanning more than twenty years of research. Two classical baselines --- Isolation Forest and One-Class SVM. Two autoencoders --- a dense one and an LSTM one --- which flag anything they cannot reconstruct. And two modern, transformer-era models, USAD and TranAD, published at top venues and supposedly the state of the art.
+
+The important design decision is that all six sit behind \textit{one} interface. That means swapping a twenty-year-old forest for a 2022 transformer is a one-line change in a config file. Everything else --- the data, the metrics, the splits --- stays identical, so the comparison is genuinely apples-to-apples. With the setup in place, I'll hand over to Laura for the methodology. \spk{[hand off to Laura]}
+
+% ===================================================================== 7
+\slide{7}{Three time-aware metrics}{Laura}{5:30--6:30}{60 s}
+Thank you, Danial. The first surprise is that \textit{how} you score a detector decides who wins. We use three metrics. Point-wise F1 is the strict one: it checks every single timestep. Point-adjust F1 is the metric the field over-uses --- it says that if a model flags \textit{any} single moment during an attack, the whole attack counts as caught. That sounds reasonable, but a 2022 paper showed it is so forgiving that a model flagging \textit{random} points beats a real detector under it. The third metric, eTaPR, is the honest one: it is event-aware and rewards how much of each attack you actually catch, and how quickly.
+
+We report all three for every model, because --- as you will see --- the ranking shuffles between them. That shuffle is not a detail; it is one of our findings.
+
+% ===================================================================== 8
+\slide{8}{System architecture}{Laura}{6:30--7:30}{60 s}
+Before the results, a quick word on how the system is built, because reproducibility is part of our argument. The flow is a straight line: raw data goes into a loader that produces one unified schema; preprocessing scales and windows it; a model fits, scores, and attributes; the evaluation turns scores into metric numbers; and everything lands in a single results table plus the figures you are about to see.
+
+Two rules make this trustworthy. Every experiment is driven by a config file --- no hidden settings --- and each run is stamped with a hash of that config, the random seed, and a timestamp. And the notebooks only \textit{plot}; if a number appears in the thesis, a tested function produced it. So every figure in this talk can be regenerated from a committed config.
+
+% ===================================================================== 9
+\slide{9}{Bridging two testbeds}{Laura}{7:30--8:20}{50 s}
+Now, the hard problem Danial mentioned: how do you transfer a model between two datasets that share no sensors? Our answer is the \textit{type vector}. Instead of trying to match ``sensor 47 in HAI'' to ``sensor 11 in Morris,'' we hand-tagged every sensor by what \textit{kind} of thing it is --- a pressure reading, a pump state, a setpoint, a valve position, and so on. Both datasets are then projected into the same six-dimensional space of sensor \textit{types}. A model that learned what abnormal pressure behaviour looks like in HAI can then be asked the same question in Morris. We transfer the scoring function, not the raw weights.
+
+% ===================================================================== 10
+\slide{10}{Software \& reproducibility}{Laura}{8:20--9:00}{40 s}
+Briefly, the stack. The classical models use scikit-learn; the deep ones use PyTorch. Attribution for the classical models uses SHAP. Everything is tested with pytest --- thirteen test modules --- and linted automatically. And the reproducibility contract is simple: one command, pointing at a config file, produces one row in the results table. Around forty-eight configs, three random seeds each. Nothing in our numbers requires you to ``have been there.''
+
+% ===================================================================== 11
+\slide{11}{Implementation --- key points}{Laura}{9:00--10:00}{60 s}
+Two pieces of code capture the whole engineering argument. On the left is the base class every model obeys: \textit{fit} on normal data, \textit{score} each moment, and \textit{attribute} a blame value to each sensor. Because all six models implement exactly this, the rest of the system never needs to know which one it is holding.
+
+On the right is a small but important guard. The single most common reason published numbers in this field are inflated is a subtle data leak: fitting the data scaler on attack data instead of normal-only data. Rather than trust ourselves to remember, we wrote an assertion that simply \textit{crashes} the program if attack rows ever reach the scaler. And at the bottom: a trained model saves as one self-contained artifact, so scoring fresh data is a single function call.
+
+% ===================================================================== 12
+\slide{12}{Results --- same-dataset detection}{Laura}{10:00--10:55}{55 s}
+Here are the baseline results, where each model is trained and tested on the \textit{same} dataset --- the standard, friendly setting. Two things stand out. First, even at home, the numbers are modest: the best model on HAI reaches an F1 of about point-five-two --- nowhere near the point-nine-five the literature advertises, once we close the data leak. Second, the Morris numbers look high, but that is partly an illusion: about ninety-one percent of the Morris windows are attacks, so a model that simply cries wolf scores well. Hold on to that thought, because it becomes the whole story on the next stage.
+
+% ===================================================================== 13
+\slide{13}{Results --- metric sensitivity}{Galiya}{10:55--11:40}{45 s}
+Thank you, Laura. \spk{[hand off to Galiya]} This chart is our second contribution in one picture. These are the \textit{same} models, scored under the three different metrics. Watch the ordering: who comes first changes depending on the metric. And the over-forgiving point-adjust metric inflates the weak classical detectors the most. The takeaway is blunt --- a leaderboard built on a single metric is not reliable. You have to report several, including an event-aware one.
+
+% ===================================================================== 14
+\slide{14}{Results --- cross-testbed transfer}{Galiya}{11:40--12:55}{75 s}
+This is the headline result. On the left, what happens when you take a model trained on one factory and naively run it on the other, using the original factory's alarm threshold. It \textit{collapses}. Every detector degenerates into the trivial ``everything is an attack'' classifier that just matches the new factory's base rate --- F1 around point-nine-five on Morris, around point-zero-five on HAI. The number reflects the new factory's statistics, not any intelligence.
+
+Now the fix: re-calibrate the threshold on a small sample of the new factory's \textit{normal} data. Suddenly a real gap appears. The modern windowed models reach around point-three-eight to point-four-four on the honest eTaPR metric, while the classical baselines stay below point-one-three. Not point-nine-five --- but it is the first time a clear modern-versus-classical separation has been measured under realistic conditions.
+
+\begin{cut}\textit{Cut if running long:} skip the heatmap sentence below and go straight to attribution.\end{cut}
+On the right, the leave-one-process-out control shows that when we hide one subsystem's sensors, the detector goes blind specifically to \textit{that} subsystem's attacks --- not everywhere. The blindness is targeted, which tells us these are really subsystem-specific detectors sharing one set of weights.
+
+% ===================================================================== 15
+\slide{15}{Results --- attribution \& localization}{Galiya}{12:55--13:50}{55 s}
+The third contribution. Catching an attack is not enough; in a plant with hundreds of sensors, an operator needs to know \textit{which} one to look at. So we tested whether each model's per-sensor blame lines up with the sensors that were actually attacked.
+
+The result is a genuine inversion. The Dense autoencoder --- the \textit{weakest} model on raw detection --- is the only one whose attributions beat random guessing on all three attacked processes. Meanwhile, the fancy attention-based explanation from the transformer turned out to be numerically \textit{identical} to plain reconstruction error --- a notable null result. And SHAP lifts the two classical baselines above random as well. In short: the best detector is often the worst at telling you where to look.
+
+% ===================================================================== 16
+\slide{16}{Key findings \& recommendations}{Galiya}{13:50--14:30}{40 s}
+So, three findings. One: naive cross-factory deployment collapses to coin-flipping. Two: hiding a subsystem causes targeted blindness, not a uniform decline. Three: the worst detector is the best localizer.
+
+And three concrete recommendations for anyone deploying these systems. Always re-calibrate the threshold on your \textit{own} normal data before going live. Never trust a single-metric ranking --- report several, including eTaPR. And test detection and localization \textit{separately}, because they are different abilities.
+
+% ===================================================================== 17
+\slide{17}{Conclusion}{Galiya}{14:30--14:55}{25 s}
+To conclude: we benchmarked six detectors on two very different testbeds, under three honest metrics, and we separated what the model knows from how the threshold is tuned. Our single message to the field is this --- report the \textit{full grid}: every metric, every calibration, attribution alongside detection. Not one headline number. And every result we showed is reproducible from a committed config file.
+
+% ===================================================================== 18
+\slide{18}{Thank you}{Galiya}{14:55--15:00}{5 s}
+Thank you for your attention. We would be glad to take your questions.
+
+\end{document}
