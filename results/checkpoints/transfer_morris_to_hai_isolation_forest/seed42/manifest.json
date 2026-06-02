@@ -1,0 +1,30 @@
+{
+  "model_name": "isolation_forest",
+  "feature_columns": [
+    "control_signal",
+    "pressure",
+    "pump_state",
+    "setpoint",
+    "system_state",
+    "valve_position"
+  ],
+  "window": null,
+  "stride": 1,
+  "trained_on": "morris__to__hai",
+  "config_hash": "14d07acb9a1a",
+  "seed": 42,
+  "git_sha": "1675a2c7077b92be1d09fde5b7a8f11d22a8edfa",
+  "extra": {
+    "source_dataset": "morris",
+    "target_dataset": "hai",
+    "threshold_source": "source_val",
+    "target_types": [
+      "control_signal",
+      "pressure",
+      "pump_state",
+      "setpoint",
+      "system_state",
+      "valve_position"
+    ]
+  }
+}

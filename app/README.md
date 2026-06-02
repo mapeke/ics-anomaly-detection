@@ -10,11 +10,10 @@ The app is what backs the cross-dataset story in the thesis: same artifact, same
    ```powershell
    pip install -r requirements.txt
    ```
-2. At least one model artifact saved under `results/checkpoints/`. Either run an experiment yourself —
+2. At least one model artifact saved under `results/checkpoints/`. Three ship with the repo (seed42) so the app runs straight after a clone — `baseline_hai_isolation_forest`, `baseline_morris_isolation_forest`, and `transfer_morris_to_hai_isolation_forest`. To produce more (other models/seeds), run an experiment yourself:
    ```powershell
    python -m experiments.run experiments/configs/baseline_morris_isolation_forest.yaml
    ```
-   — or use whichever artifacts are already committed (13 ship with the repo: HAI / Morris baselines + Morris→HAI transfer for IF and Dense AE).
 3. (Optional) bundled demo CSVs at `data/demo/`. Already present; regenerate with `python -m scripts.build_demo_datasets` if needed.
 
 ## Run

@@ -1,0 +1,28 @@
+{
+  "model_name": "isolation_forest",
+  "feature_columns": [
+    "address",
+    "function",
+    "length",
+    "setpoint",
+    "gain",
+    "reset rate",
+    "deadband",
+    "cycle time",
+    "rate",
+    "system mode",
+    "control scheme",
+    "pump",
+    "solenoid",
+    "pressure measurement",
+    "crc rate",
+    "command response"
+  ],
+  "window": null,
+  "stride": 1,
+  "trained_on": "morris",
+  "config_hash": "e3538d1ecbc9",
+  "seed": 42,
+  "git_sha": "3795cee8de4fb5570eda66b29770dbaaab84c456",
+  "extra": {}
+}
